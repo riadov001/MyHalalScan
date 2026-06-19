@@ -16,13 +16,19 @@
     },
     "ios": {
       "supportsTablet": false,
+      "bundleIdentifier": "com.halalscan.app",
       "infoPlist": {
         "NSCameraUsageDescription": "HalalScan a besoin de la caméra pour scanner les codes-barres des produits alimentaires.",
         "NSSpeechRecognitionUsageDescription": "HalalScan utilise la synthèse vocale pour annoncer les résultats."
       }
     },
     "android": {
-      "permissions": ["CAMERA", "VIBRATE"]
+      "package": "com.halalscan.app",
+      "permissions": ["CAMERA", "VIBRATE"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0D0D0D"
+      }
     },
     "web": {
       "favicon": "./assets/images/icon.png"
