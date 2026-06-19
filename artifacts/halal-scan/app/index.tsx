@@ -19,6 +19,7 @@ import Animated, {
   useSharedValue,
   withRepeat,
   withSequence,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,8 +30,10 @@ import { type ScanResult, useScanContext } from "@/context/ScanContext";
 import type { Product } from "@/lib/db";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const SCAN_W = Math.min(SCREEN_W * 0.82, 320);
-const SCAN_H = 200;
+const SCAN_W = Math.min(SCREEN_W * 0.82, 310);
+const SCAN_H = 190;
+const CORNER = 44;
+const CORNER_THICKNESS = 4;
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -69,15 +72,55 @@ export default function ScannerScreen() {
 
   const historyCount = Object.keys(products).length;
 
+  // Animations
   const scanLineY = useSharedValue(0);
-  const buttonPulse = useSharedValue(1);
-  const offlinePulse = useSharedValue(1);
+  const scanLineOpacity = useSharedValue(0);
+  const ringScale1 = useSharedValue(1);
+  const ringOpacity1 = useSharedValue(0.6);
+  const ringScale2 = useSharedValue(1);
+  const ringOpacity2 = useSharedValue(0.35);
+  const btnScale = useSharedValue(1);
+  const cornerBrightness = useSharedValue(0.4);
+  const offlineBlink = useSharedValue(1);
 
+  // Offline banner blink
   useEffect(() => {
-    offlinePulse.value = withRepeat(
+    offlineBlink.value = withRepeat(
       withSequence(
-        withTiming(0.6, { duration: 900 }),
-        withTiming(1, { duration: 900 }),
+        withTiming(0.55, { duration: 1100 }),
+        withTiming(1, { duration: 1100 }),
+      ),
+      -1,
+    );
+  }, []);
+
+  // Ring pulse animation (idle)
+  const startIdlePulse = useCallback(() => {
+    ringScale1.value = withRepeat(
+      withSequence(
+        withTiming(1.14, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.0, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+    );
+    ringOpacity1.value = withRepeat(
+      withSequence(
+        withTiming(0.18, { duration: 1400 }),
+        withTiming(0.55, { duration: 1400 }),
+      ),
+      -1,
+    );
+    ringScale2.value = withRepeat(
+      withSequence(
+        withTiming(1.28, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1.0, { duration: 1800, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+    );
+    ringOpacity2.value = withRepeat(
+      withSequence(
+        withTiming(0.06, { duration: 1800 }),
+        withTiming(0.25, { duration: 1800 }),
       ),
       -1,
     );
@@ -85,34 +128,49 @@ export default function ScannerScreen() {
 
   useEffect(() => {
     if (isScanning) {
+      cancelAnimation(ringScale1);
+      cancelAnimation(ringScale2);
+      cancelAnimation(ringOpacity1);
+      cancelAnimation(ringOpacity2);
+      ringScale1.value = withTiming(1);
+      ringOpacity1.value = withTiming(0.8);
+      ringScale2.value = withTiming(1);
+      ringOpacity2.value = withTiming(0.4);
+      cornerBrightness.value = withTiming(1, { duration: 400 });
+      scanLineOpacity.value = withTiming(1, { duration: 400 });
       scanLineY.value = withRepeat(
-        withTiming(SCAN_H - 4, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+        withTiming(SCAN_H - 4, { duration: 1700, easing: Easing.inOut(Easing.quad) }),
         -1,
         true,
       );
-      cancelAnimation(buttonPulse);
-      buttonPulse.value = withTiming(1);
-    } else {
+    } else if (!isLoading) {
       cancelAnimation(scanLineY);
-      scanLineY.value = withTiming(SCAN_H / 2);
-      if (!isLoading) {
-        buttonPulse.value = withRepeat(
-          withSequence(
-            withTiming(1.05, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-            withTiming(1.0, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-          ),
-          -1,
-        );
-      } else {
-        cancelAnimation(buttonPulse);
-        buttonPulse.value = withTiming(1);
-      }
+      scanLineOpacity.value = withTiming(0, { duration: 300 });
+      cornerBrightness.value = withTiming(0.4, { duration: 600 });
+      startIdlePulse();
     }
   }, [isScanning, isLoading]);
 
-  const scanLineStyle = useAnimatedStyle(() => ({ transform: [{ translateY: scanLineY.value }] }));
-  const buttonAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: buttonPulse.value }] }));
-  const offlineStyle = useAnimatedStyle(() => ({ opacity: offlinePulse.value }));
+  useEffect(() => {
+    if (!isLoading && !isScanning) startIdlePulse();
+  }, []);
+
+  const scanLineStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: scanLineY.value }],
+    opacity: scanLineOpacity.value,
+  }));
+  const ring1Style = useAnimatedStyle(() => ({
+    transform: [{ scale: ringScale1.value }],
+    opacity: ringOpacity1.value,
+  }));
+  const ring2Style = useAnimatedStyle(() => ({
+    transform: [{ scale: ringScale2.value }],
+    opacity: ringOpacity2.value,
+  }));
+  const cornerStyle = useAnimatedStyle(() => ({ opacity: cornerBrightness.value }));
+  const cornerActiveStyle = useAnimatedStyle(() => ({ opacity: cornerBrightness.value, shadowOpacity: cornerBrightness.value * 0.9 }));
+  const offlineStyle = useAnimatedStyle(() => ({ opacity: offlineBlink.value }));
+  const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
 
   const handleBarcode = useCallback(
     async ({ data: barcode }: { data: string }) => {
@@ -125,9 +183,7 @@ export default function ScannerScreen() {
       isLoadingRef.current = true;
       setIsLoading(true);
 
-      if (Platform.OS !== "web") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      }
+      if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
       const cached = getProduct(barcode);
       if (cached && !pendingBarcodes.includes(barcode)) {
@@ -167,8 +223,6 @@ export default function ScannerScreen() {
           result: ScanResult;
           productName: string;
           reason?: string;
-          foundInDatabase: boolean;
-          hasIngredients: boolean;
           ingredientsText?: string;
           ingredientsList?: string[];
         };
@@ -183,9 +237,8 @@ export default function ScannerScreen() {
           isWhitelisted: false,
         };
         await addProduct(product);
-        const finalResult = isWhitelisted(barcode) ? "halal" : json.result;
         setScanResult({
-          result: finalResult,
+          result: isWhitelisted(barcode) ? "halal" : json.result,
           productName: json.productName,
           barcode,
           reason: json.reason,
@@ -218,25 +271,25 @@ export default function ScannerScreen() {
   const handleWhitelist = useCallback(() => {
     if (!scanResult) return;
     whitelistProduct(scanResult.barcode);
-    setScanResult((prev) => (prev ? { ...prev, result: "halal" } : null));
+    setScanResult((p) => (p ? { ...p, result: "halal" } : null));
   }, [scanResult, whitelistProduct]);
 
   const toggleScan = useCallback(() => {
+    if (isLoading) return;
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    btnScale.value = withSequence(withTiming(0.93, { duration: 90 }), withSpring(1, { damping: 12 }));
     setIsScanning((v) => {
-      if (v) {
-        lastScanned.current = null;
-        scanCooldown.current = false;
-      }
+      if (v) { lastScanned.current = null; scanCooldown.current = false; }
       return !v;
     });
-  }, []);
+  }, [isLoading]);
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
 
   if (!permission) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.flex, { backgroundColor: colors.background, alignItems: "center", justifyContent: "center" }]}>
         <ActivityIndicator size="large" color={colors.gold} />
       </View>
     );
@@ -244,21 +297,26 @@ export default function ScannerScreen() {
 
   if (!permission.granted) {
     return (
-      <LinearGradient colors={["#050908", "#0C1510"]} style={[styles.center, { paddingTop: topPad + 20 }]}>
-        <Text style={styles.permIcon}>📷</Text>
-        <Text style={styles.permTitle}>Accès Caméra</Text>
+      <LinearGradient colors={["#0C1510", "#050908", "#050908"]} style={[styles.flex, styles.permScreen]}>
+        <View style={[styles.permIconCircle]}>
+          <Text style={styles.permIcon}>📷</Text>
+        </View>
+        <Text style={styles.permTitle}>Accès Caméra{"\n"}Requis</Text>
         <Text style={styles.permText}>
-          HalalScan a besoin de la caméra pour scanner les codes-barres des produits.
+          HalalScan utilise la caméra pour scanner les codes-barres des produits alimentaires.
         </Text>
         <TouchableOpacity style={styles.permBtn} onPress={requestPermission} activeOpacity={0.85}>
-          <Text style={styles.permBtnText}>AUTORISER LA CAMÉRA</Text>
+          <LinearGradient colors={[colors.goldLight, colors.gold, "#A07820"]} style={styles.permBtnGrad}>
+            <Text style={styles.permBtnText}>AUTORISER LA CAMÉRA</Text>
+          </LinearGradient>
         </TouchableOpacity>
+        <Text style={styles.permNote}>Votre caméra n'est jamais enregistrée.</Text>
       </LinearGradient>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.flex}>
       <CameraView
         style={StyleSheet.absoluteFill}
         facing="back"
@@ -268,98 +326,135 @@ export default function ScannerScreen() {
         onBarcodeScanned={isScanning ? handleBarcode : undefined}
       />
 
-      {/* dark vignette */}
-      <View style={styles.vignetteContainer} pointerEvents="none">
-        <LinearGradient colors={["rgba(5,9,8,0.82)", "rgba(5,9,8,0.45)"]} style={styles.vigTop} />
-        <View style={styles.vigRow}>
-          <View style={styles.vigSide} />
-          <View style={[styles.vigHole, { width: SCAN_W, height: SCAN_H }]} />
-          <View style={styles.vigSide} />
-        </View>
-        <LinearGradient colors={["rgba(5,9,8,0.45)", "rgba(5,9,8,0.88)"]} style={styles.vigBottom} />
+      {/* vignette overlay */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <LinearGradient
+          colors={["rgba(5,9,8,0.88)", "rgba(5,9,8,0.55)", "transparent"]}
+          style={styles.vigTop}
+        />
+        <LinearGradient
+          colors={["transparent", "rgba(5,9,8,0.55)", "rgba(5,9,8,0.92)"]}
+          style={styles.vigBottom}
+        />
+        <LinearGradient
+          colors={["rgba(5,9,8,0.65)", "transparent", "rgba(5,9,8,0.65)"]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
       </View>
 
-      <View style={styles.overlay} pointerEvents="box-none">
-
+      <View style={styles.flex} pointerEvents="box-none">
         {/* ── offline banner ── */}
         {(!isOnline || pendingBarcodes.length > 0) && (
-          <Animated.View style={[styles.offlineBanner, offlineStyle, { paddingTop: topPad + 6 }]}>
-            <Text style={styles.offlineIcon}>{isOnline ? "🔄" : "📡"}</Text>
+          <Animated.View style={[styles.offlineBanner, { paddingTop: topPad + 4 }, offlineStyle]}>
+            <View style={styles.offlineDot} />
             <Text style={styles.offlineText}>
               {isOnline
-                ? `Synchronisation de ${pendingBarcodes.length} scan(s)…`
+                ? `Synchronisation en cours — ${pendingBarcodes.length} scan(s)…`
                 : `Hors ligne — ${pendingBarcodes.length} scan(s) en attente`}
             </Text>
             {isOnline && pendingBarcodes.length > 0 && (
-              <TouchableOpacity onPress={processPendingQueue}>
-                <Text style={styles.offlineRetry}>↻</Text>
+              <TouchableOpacity onPress={processPendingQueue} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Text style={styles.offlineSync}>↻</Text>
               </TouchableOpacity>
             )}
           </Animated.View>
         )}
 
-        {/* ── header ── */}
-        <View style={[styles.header, { paddingTop: (!isOnline || pendingBarcodes.length > 0) ? 0 : topPad + 10 }]}>
-          <View style={styles.headerContent}>
-            <View style={styles.headerTitle}>
-              <Text style={styles.appArabic}>حلال</Text>
-              <Text style={styles.appName}>
-                <Text style={styles.appNameGreen}>Halal</Text>
-                <Text style={styles.appNameGold}>Scan</Text>
-              </Text>
+        {/* ── HEADER ── */}
+        <View
+          style={[
+            styles.header,
+            {
+              paddingTop: (!isOnline || pendingBarcodes.length > 0) ? 12 : topPad + 12,
+            },
+          ]}
+        >
+          <View style={styles.logoRow}>
+            <View style={styles.logoLeft}>
+              <Text style={styles.logoArabic}>حلال</Text>
+              <View>
+                <Text style={styles.logoApp}>
+                  <Text style={styles.logoGreen}>Halal</Text>
+                  <Text style={styles.logoGold}>Scan</Text>
+                </Text>
+                <Text style={styles.logoTagline}>Analyse d'ingrédients halal</Text>
+              </View>
             </View>
-            <View style={styles.headerButtons}>
-              <TouchableOpacity style={styles.headerBtn} onPress={() => router.push("/settings")} activeOpacity={0.75}>
-                <Text style={styles.headerBtnIcon}>⚙️</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.headerBtn} onPress={() => router.push("/history")} activeOpacity={0.75}>
-                <Text style={styles.headerBtnIcon}>📋</Text>
-                {historyCount > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{historyCount > 99 ? "99+" : historyCount}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <HeaderBtn icon="⚙️" onPress={() => router.push("/settings")} />
+              <HeaderBtn icon="📋" onPress={() => router.push("/history")} badge={historyCount} />
             </View>
           </View>
-          <Text style={styles.headerSub}>
-            {isScanning ? "Pointez le code-barres vers le cadre" : "Appuyez sur SCANNER pour commencer"}
+
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: isScanning ? colors.halalGreen : colors.mutedForeground }]} />
+            <Text style={styles.statusText}>
+              {isScanning
+                ? "Pointez le code-barres vers le cadre"
+                : "Appuyez sur SCANNER pour commencer"}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── SCAN FRAME ── */}
+        <View style={styles.frameContainer} pointerEvents="none">
+          <View style={[styles.frame, { width: SCAN_W, height: SCAN_H }]}>
+            {/* corners */}
+            {isScanning ? (
+              <>
+                <Animated.View style={[styles.corner, styles.tl, cornerActiveStyle]} />
+                <Animated.View style={[styles.corner, styles.tr, cornerActiveStyle]} />
+                <Animated.View style={[styles.corner, styles.bl, cornerActiveStyle]} />
+                <Animated.View style={[styles.corner, styles.br, cornerActiveStyle]} />
+              </>
+            ) : (
+              <>
+                <Animated.View style={[styles.corner, styles.tl, cornerStyle]} />
+                <Animated.View style={[styles.corner, styles.tr, cornerStyle]} />
+                <Animated.View style={[styles.corner, styles.bl, cornerStyle]} />
+                <Animated.View style={[styles.corner, styles.br, cornerStyle]} />
+              </>
+            )}
+
+            {/* scan line */}
+            <Animated.View style={[styles.scanLineWrap, scanLineStyle]} pointerEvents="none">
+              <LinearGradient
+                colors={["transparent", colors.gold, colors.goldLight, colors.gold, "transparent"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.scanLine}
+              />
+            </Animated.View>
+          </View>
+
+          <Text style={styles.frameHint}>
+            {isScanning ? "EAN-13 · EAN-8 · UPC · QR Code" : " "}
           </Text>
         </View>
 
-        {/* ── scan frame ── */}
-        <View style={styles.scanFrameWrapper} pointerEvents="none">
-          <View style={[styles.scanFrame, { width: SCAN_W, height: SCAN_H }]}>
-            {/* corners */}
-            <View style={[styles.corner, styles.tl, isScanning && styles.cornerActive]} />
-            <View style={[styles.corner, styles.tr, isScanning && styles.cornerActive]} />
-            <View style={[styles.corner, styles.bl, isScanning && styles.cornerActive]} />
-            <View style={[styles.corner, styles.br, isScanning && styles.cornerActive]} />
-            {isScanning && (
-              <Animated.View style={[styles.scanLine, scanLineStyle]} />
-            )}
-          </View>
-          {isScanning && (
-            <Text style={styles.scanHint}>EAN-13 · EAN-8 · UPC · QR</Text>
-          )}
-        </View>
-
-        {/* ── bottom ── */}
-        <View style={[styles.bottom, { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 24) }]}>
+        {/* ── BOTTOM PANEL ── */}
+        <View style={[styles.bottom, { paddingBottom: botPad + 16 }]}>
           {isLoading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator size="large" color={colors.gold} />
               <Text style={styles.loadingText}>ANALYSE EN COURS…</Text>
+              <Text style={styles.loadingSubtext}>Interrogation de la base de données</Text>
             </View>
           ) : (
-            <Animated.View style={buttonAnimStyle}>
-              <TouchableOpacity
-                onPress={toggleScan}
-                activeOpacity={0.88}
-                style={styles.scanBtnOuter}
-              >
+            <Animated.View style={[styles.btnWrapper, btnStyle]}>
+              {/* outer glow rings */}
+              <Animated.View style={[styles.ring, styles.ring2, ring2Style]} pointerEvents="none" />
+              <Animated.View style={[styles.ring, styles.ring1, ring1Style]} pointerEvents="none" />
+
+              <TouchableOpacity onPress={toggleScan} activeOpacity={0.9}>
                 <LinearGradient
-                  colors={isScanning ? ["#C03020", "#8B1A10"] : [colors.gold, colors.goldLight, "#A07820"]}
+                  colors={
+                    isScanning
+                      ? ["#C03020", "#9B1A10", "#6B0A08"]
+                      : [colors.goldLight, colors.gold, "#B08030", colors.gold]
+                  }
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.scanBtn}
@@ -369,6 +464,12 @@ export default function ScannerScreen() {
                 </LinearGradient>
               </TouchableOpacity>
             </Animated.View>
+          )}
+
+          {!isLoading && (
+            <Text style={styles.bottomHint}>
+              {isScanning ? "Maintenez l'appareil stable" : "Scannez n'importe quel code-barres alimentaire"}
+            </Text>
           )}
         </View>
       </View>
@@ -391,141 +492,162 @@ export default function ScannerScreen() {
   );
 }
 
+function HeaderBtn({ icon, onPress, badge }: { icon: string; onPress: () => void; badge?: number }) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={styles.headerBtn}>
+      <View style={styles.headerBtnInner}>
+        <Text style={styles.headerBtnIcon}>{icon}</Text>
+      </View>
+      {!!badge && badge > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{badge > 99 ? "99+" : badge}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+const BTN_SIZE = 192;
+const RING1_SIZE = BTN_SIZE + 36;
+const RING2_SIZE = BTN_SIZE + 76;
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  center: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    backgroundColor: colors.background, paddingHorizontal: 36, gap: 24,
-  },
+  flex: { flex: 1 },
 
   // vignette
-  vignetteContainer: { ...StyleSheet.absoluteFillObject, flexDirection: "column" },
-  vigTop: { maxHeight: "38%", flex: 1 },
-  vigRow: { flexDirection: "row", height: SCAN_H },
-  vigSide: { flex: 1, backgroundColor: "rgba(5,9,8,0.72)" },
-  vigHole: {},
-  vigBottom: { flex: 1 },
+  vigTop: { position: "absolute", top: 0, left: 0, right: 0, height: "42%" },
+  vigBottom: { position: "absolute", bottom: 0, left: 0, right: 0, height: "50%" },
 
-  overlay: { flex: 1, justifyContent: "space-between" },
-
-  // offline banner
+  // offline
   offlineBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-    gap: 8,
-    backgroundColor: "rgba(240,165,0,0.15)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(240,165,0,0.3)",
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 16, paddingBottom: 10, gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(240,165,0,0.4)",
+    backgroundColor: "rgba(20,12,0,0.75)",
   },
-  offlineIcon: { fontSize: 16 },
+  offlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.warningAmber },
   offlineText: { flex: 1, fontSize: 13, color: colors.warningAmber, fontWeight: "600" },
-  offlineRetry: { fontSize: 20, color: colors.warningAmber, fontWeight: "700" },
+  offlineSync: { fontSize: 22, color: colors.warningAmber, fontWeight: "700" },
 
   // header
   header: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: "rgba(5,9,8,0.70)",
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    gap: 10,
   },
-  headerContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
+  logoRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  logoLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  logoArabic: { fontSize: 42, color: colors.halalGreen, lineHeight: 52 },
+  logoApp: { fontSize: 30, fontWeight: "900", letterSpacing: 0.5, lineHeight: 36 },
+  logoGreen: { color: colors.halalGreen },
+  logoGold: { color: colors.gold },
+  logoTagline: { fontSize: 11, color: colors.mutedForeground, fontWeight: "500", letterSpacing: 1 },
+
+  headerActions: { flexDirection: "row", gap: 8 },
+  headerBtn: { position: "relative" },
+  headerBtnInner: {
+    width: 50, height: 50, borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
+    alignItems: "center", justifyContent: "center",
   },
-  headerTitle: { flexDirection: "row", alignItems: "center", gap: 10 },
-  appArabic: { fontSize: 30, color: colors.halalGreen, lineHeight: 38 },
-  appName: { fontSize: 32, fontWeight: "900", letterSpacing: 1 },
-  appNameGreen: { color: colors.halalGreen },
-  appNameGold: { color: colors.gold },
-  headerButtons: { flexDirection: "row", gap: 4 },
-  headerBtn: { padding: 10, position: "relative" },
-  headerBtnIcon: { fontSize: 28 },
+  headerBtnIcon: { fontSize: 24 },
   badge: {
-    position: "absolute", top: 4, right: 4,
+    position: "absolute", top: -4, right: -4,
     backgroundColor: colors.haramRed,
-    borderRadius: 10, minWidth: 20, height: 20,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
+    borderRadius: 9, minWidth: 18, height: 18,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
   },
-  badgeText: { fontSize: 11, fontWeight: "900", color: "#FFF" },
-  headerSub: {
-    fontSize: 17,
-    color: "rgba(255,255,255,0.75)",
-    fontWeight: "500",
-    textAlign: "center",
-  },
+  badgeText: { fontSize: 10, fontWeight: "900", color: "#FFF" },
+
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 4 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusText: { fontSize: 16, color: "rgba(255,255,255,0.7)", fontWeight: "500" },
 
   // scan frame
-  scanFrameWrapper: {
-    position: "absolute",
-    top: 0, bottom: 0, left: 0, right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 14,
-  },
-  scanFrame: { position: "relative" },
+  frameContainer: {
+    position: "absolute", top: 0, bottom: 0, left: 0, right: 0,
+    alignItems: "center", justifyContent: "center", gap: 14,
+    pointerEvents: "none",
+  } as unknown as { [key: string]: unknown },
+  frame: { position: "relative", overflow: "visible" },
   corner: {
     position: "absolute",
-    width: 40, height: 40,
-    borderColor: "rgba(255,255,255,0.3)",
-    borderWidth: 3,
+    width: CORNER, height: CORNER,
+    borderColor: colors.gold,
+    borderWidth: CORNER_THICKNESS,
   },
-  cornerActive: { borderColor: colors.gold },
-  tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
-  tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
-  bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
-  br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
+  tl: { top: -2, left: -2, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 6 },
+  tr: { top: -2, right: -2, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 6 },
+  bl: { bottom: -2, left: -2, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 6 },
+  br: { bottom: -2, right: -2, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 6 },
+
+  scanLineWrap: {
+    position: "absolute", top: 0, left: 0, right: 0,
+  },
   scanLine: {
-    position: "absolute", top: 0, left: 8, right: 8,
-    height: 3, borderRadius: 2, backgroundColor: colors.gold,
-    shadowColor: colors.gold, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+    height: 3, borderRadius: 2,
+    shadowColor: colors.gold, shadowOpacity: 1, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
   },
-  scanHint: {
-    fontSize: 12, color: "rgba(255,255,255,0.45)",
-    fontWeight: "600", letterSpacing: 1.5, textAlign: "center",
-  },
+  frameHint: { fontSize: 12, color: "rgba(255,255,255,0.4)", letterSpacing: 2, fontWeight: "600" },
 
   // bottom
   bottom: {
     alignItems: "center",
-    paddingTop: 20,
-    paddingHorizontal: 32,
-    backgroundColor: "rgba(5,9,8,0.75)",
+    paddingTop: 16,
+    paddingHorizontal: 24,
+    gap: 0,
   },
-  loadingBox: { alignItems: "center", gap: 16, paddingVertical: 38 },
-  loadingText: {
-    color: colors.gold, fontSize: 18, fontWeight: "800", letterSpacing: 2,
+  loadingBox: { alignItems: "center", gap: 14, paddingVertical: 42 },
+  loadingText: { fontSize: 20, fontWeight: "900", color: colors.gold, letterSpacing: 2.5 },
+  loadingSubtext: { fontSize: 14, color: colors.mutedForeground, fontWeight: "500" },
+
+  btnWrapper: { width: RING2_SIZE, height: RING2_SIZE, alignItems: "center", justifyContent: "center" },
+  ring: {
+    position: "absolute",
+    borderRadius: 999,
+    borderWidth: 1.5,
   },
-  scanBtnOuter: {
-    borderRadius: 110,
-    shadowColor: colors.gold,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 32,
-    elevation: 18,
+  ring1: {
+    width: RING1_SIZE, height: RING1_SIZE,
+    borderColor: colors.gold,
+  },
+  ring2: {
+    width: RING2_SIZE, height: RING2_SIZE,
+    borderColor: colors.gold,
   },
   scanBtn: {
-    width: 200, height: 200,
-    borderRadius: 100,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
+    width: BTN_SIZE, height: BTN_SIZE, borderRadius: BTN_SIZE / 2,
+    alignItems: "center", justifyContent: "center", gap: 4,
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 16,
   },
-  scanBtnIcon: { fontSize: 58, lineHeight: 68 },
-  scanBtnText: {
-    fontSize: 26, fontWeight: "900",
-    color: colors.scannerButtonText, letterSpacing: 2.5,
+  scanBtnIcon: { fontSize: 56, lineHeight: 66 },
+  scanBtnText: { fontSize: 22, fontWeight: "900", color: "#050908", letterSpacing: 2 },
+
+  bottomHint: {
+    fontSize: 14, color: "rgba(255,255,255,0.4)",
+    textAlign: "center", fontWeight: "500", marginTop: 16,
   },
 
   // permission
-  permIcon: { fontSize: 90, textAlign: "center" },
-  permTitle: { fontSize: 30, fontWeight: "900", color: colors.foreground, textAlign: "center" },
-  permText: { fontSize: 19, color: colors.foregroundDim, textAlign: "center", lineHeight: 30 },
-  permBtn: {
-    backgroundColor: colors.gold, borderRadius: colors.radius,
-    paddingVertical: 22, paddingHorizontal: 44, marginTop: 10,
+  permScreen: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 40, gap: 22 },
+  permIconCircle: {
+    width: 120, height: 120, borderRadius: 60,
+    backgroundColor: "rgba(212,168,71,0.12)",
+    borderWidth: 2, borderColor: colors.gold + "50",
+    alignItems: "center", justifyContent: "center",
   },
-  permBtnText: { fontSize: 20, fontWeight: "900", color: colors.scannerButtonText, letterSpacing: 1.5 },
+  permIcon: { fontSize: 56 },
+  permTitle: { fontSize: 32, fontWeight: "900", color: colors.foreground, textAlign: "center", lineHeight: 42 },
+  permText: { fontSize: 18, color: colors.foregroundDim, textAlign: "center", lineHeight: 28 },
+  permBtn: { borderRadius: 20, overflow: "hidden", width: "100%" },
+  permBtnGrad: { paddingVertical: 22, alignItems: "center" },
+  permBtnText: { fontSize: 20, fontWeight: "900", color: "#050908", letterSpacing: 1.5 },
+  permNote: { fontSize: 13, color: colors.mutedForeground, textAlign: "center" },
 });
