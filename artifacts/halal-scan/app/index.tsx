@@ -1,5 +1,6 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -25,10 +26,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ResultOverlay from "@/components/ResultOverlay";
 import colors from "@/constants/colors";
 import { type ScanResult, useScanContext } from "@/context/ScanContext";
+import type { Product } from "@/lib/db";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const SCAN_W = Math.min(SCREEN_W * 0.78, 300);
-const SCAN_H = 190;
+const SCAN_W = Math.min(SCREEN_W * 0.82, 320);
+const SCAN_H = 200;
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -39,9 +41,8 @@ interface ScanState {
   reason?: string;
   ingredientsText?: string;
   ingredientsList?: string[];
+  isOfflineQueued?: boolean;
 }
-
-// ─── scanner screen ───────────────────────────────────────────────────────────
 
 export default function ScannerScreen() {
   const insets = useSafeAreaInsets();
@@ -54,20 +55,38 @@ export default function ScannerScreen() {
   const scanCooldown = useRef(false);
   const isLoadingRef = useRef(false);
 
-  const { addToCache, addToWhitelist, getCached, isWhitelisted, cache } = useScanContext();
-  const historyCount = Object.keys(cache).length;
+  const {
+    addProduct,
+    queueOfflineScan,
+    whitelistProduct,
+    getProduct,
+    isWhitelisted,
+    isOnline,
+    pendingBarcodes,
+    processPendingQueue,
+    products,
+  } = useScanContext();
 
-  // ── animations ──────────────────────────────────────────────────────────────
+  const historyCount = Object.keys(products).length;
+
   const scanLineY = useSharedValue(0);
   const buttonPulse = useSharedValue(1);
+  const offlinePulse = useSharedValue(1);
+
+  useEffect(() => {
+    offlinePulse.value = withRepeat(
+      withSequence(
+        withTiming(0.6, { duration: 900 }),
+        withTiming(1, { duration: 900 }),
+      ),
+      -1,
+    );
+  }, []);
 
   useEffect(() => {
     if (isScanning) {
       scanLineY.value = withRepeat(
-        withTiming(SCAN_H - 4, {
-          duration: 1800,
-          easing: Easing.inOut(Easing.quad),
-        }),
+        withTiming(SCAN_H - 4, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
         -1,
         true,
       );
@@ -79,8 +98,8 @@ export default function ScannerScreen() {
       if (!isLoading) {
         buttonPulse.value = withRepeat(
           withSequence(
-            withTiming(1.06, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
-            withTiming(1.0, { duration: 1100, easing: Easing.inOut(Easing.sin) }),
+            withTiming(1.05, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
+            withTiming(1.0, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
           ),
           -1,
         );
@@ -91,14 +110,10 @@ export default function ScannerScreen() {
     }
   }, [isScanning, isLoading]);
 
-  const scanLineStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: scanLineY.value }],
-  }));
-  const buttonAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: buttonPulse.value }],
-  }));
+  const scanLineStyle = useAnimatedStyle(() => ({ transform: [{ translateY: scanLineY.value }] }));
+  const buttonAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: buttonPulse.value }] }));
+  const offlineStyle = useAnimatedStyle(() => ({ opacity: offlinePulse.value }));
 
-  // ── barcode handler ──────────────────────────────────────────────────────────
   const handleBarcode = useCallback(
     async ({ data: barcode }: { data: string }) => {
       if (scanCooldown.current || isLoadingRef.current) return;
@@ -114,8 +129,8 @@ export default function ScannerScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       }
 
-      const cached = getCached(barcode);
-      if (cached) {
+      const cached = getProduct(barcode);
+      if (cached && !pendingBarcodes.includes(barcode)) {
         isLoadingRef.current = false;
         setIsLoading(false);
         setScanResult({
@@ -129,8 +144,24 @@ export default function ScannerScreen() {
         return;
       }
 
+      if (!isOnline) {
+        await queueOfflineScan(barcode);
+        isLoadingRef.current = false;
+        setIsLoading(false);
+        setScanResult({
+          result: "unknown",
+          productName: "En attente de réseau",
+          barcode,
+          reason: "Ce produit sera analysé automatiquement dès le retour de la connexion.",
+          isOfflineQueued: true,
+        });
+        return;
+      }
+
       try {
-        const res = await fetch(`${API_BASE}/api/halal/analyze/${barcode}`);
+        const res = await fetch(`${API_BASE}/api/halal/analyze/${barcode}`, {
+          signal: AbortSignal.timeout(15_000),
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as {
           result: ScanResult;
@@ -141,9 +172,7 @@ export default function ScannerScreen() {
           ingredientsText?: string;
           ingredientsList?: string[];
         };
-
-        const finalResult = isWhitelisted(barcode) ? "halal" : json.result;
-        await addToCache({
+        const product: Product = {
           barcode,
           result: json.result,
           productName: json.productName,
@@ -151,7 +180,10 @@ export default function ScannerScreen() {
           reason: json.reason,
           ingredientsText: json.ingredientsText,
           ingredientsList: json.ingredientsList,
-        });
+          isWhitelisted: false,
+        };
+        await addProduct(product);
+        const finalResult = isWhitelisted(barcode) ? "halal" : json.result;
         setScanResult({
           result: finalResult,
           productName: json.productName,
@@ -161,13 +193,20 @@ export default function ScannerScreen() {
           ingredientsList: json.ingredientsList,
         });
       } catch {
-        setScanResult({ result: "unknown", productName: "Erreur réseau", barcode });
+        await queueOfflineScan(barcode);
+        setScanResult({
+          result: "unknown",
+          productName: "Connexion impossible",
+          barcode,
+          reason: "Ce produit sera analysé automatiquement dès le retour de la connexion.",
+          isOfflineQueued: true,
+        });
       } finally {
         isLoadingRef.current = false;
         setIsLoading(false);
       }
     },
-    [getCached, isWhitelisted, addToCache],
+    [getProduct, isWhitelisted, addProduct, queueOfflineScan, isOnline, pendingBarcodes],
   );
 
   const handleDismiss = useCallback(() => {
@@ -178,14 +217,12 @@ export default function ScannerScreen() {
 
   const handleWhitelist = useCallback(() => {
     if (!scanResult) return;
-    addToWhitelist(scanResult.barcode);
+    whitelistProduct(scanResult.barcode);
     setScanResult((prev) => (prev ? { ...prev, result: "halal" } : null));
-  }, [scanResult, addToWhitelist]);
+  }, [scanResult, whitelistProduct]);
 
   const toggleScan = useCallback(() => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsScanning((v) => {
       if (v) {
         lastScanned.current = null;
@@ -195,18 +232,19 @@ export default function ScannerScreen() {
     });
   }, []);
 
-  // ── permission screens ───────────────────────────────────────────────────────
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+
   if (!permission) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.scannerButton} />
+        <ActivityIndicator size="large" color={colors.gold} />
       </View>
     );
   }
 
   if (!permission.granted) {
     return (
-      <View style={[styles.center, { paddingTop: insets.top + 20 }]}>
+      <LinearGradient colors={["#050908", "#0C1510"]} style={[styles.center, { paddingTop: topPad + 20 }]}>
         <Text style={styles.permIcon}>📷</Text>
         <Text style={styles.permTitle}>Accès Caméra</Text>
         <Text style={styles.permText}>
@@ -215,14 +253,9 @@ export default function ScannerScreen() {
         <TouchableOpacity style={styles.permBtn} onPress={requestPermission} activeOpacity={0.85}>
           <Text style={styles.permBtnText}>AUTORISER LA CAMÉRA</Text>
         </TouchableOpacity>
-      </View>
+      </LinearGradient>
     );
   }
-
-  // ── main UI ──────────────────────────────────────────────────────────────────
-  const btnBg = isScanning ? "#FF4500" : colors.scannerButton;
-  const topPad = insets.top + (Platform.OS === "web" ? 67 : 10);
-  const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
 
   return (
     <View style={styles.container}>
@@ -235,57 +268,69 @@ export default function ScannerScreen() {
         onBarcodeScanned={isScanning ? handleBarcode : undefined}
       />
 
-      {/* vignette — 4 rectangles framing the scan zone */}
+      {/* dark vignette */}
       <View style={styles.vignetteContainer} pointerEvents="none">
-        <View style={styles.vigTop} />
+        <LinearGradient colors={["rgba(5,9,8,0.82)", "rgba(5,9,8,0.45)"]} style={styles.vigTop} />
         <View style={styles.vigRow}>
           <View style={styles.vigSide} />
           <View style={[styles.vigHole, { width: SCAN_W, height: SCAN_H }]} />
           <View style={styles.vigSide} />
         </View>
-        <View style={styles.vigBottom} />
+        <LinearGradient colors={["rgba(5,9,8,0.45)", "rgba(5,9,8,0.88)"]} style={styles.vigBottom} />
       </View>
 
       <View style={styles.overlay} pointerEvents="box-none">
-        {/* header */}
-        <View style={[styles.header, { paddingTop: topPad }]}>
-          <Text style={styles.appArabic}>حلال</Text>
-          <Text style={styles.appTitle}>
-            <Text style={styles.appTitleHalal}>Halal</Text>
-            <Text style={styles.appTitleScan}>Scan</Text>
-          </Text>
-          <Text style={styles.appSubtitle}>
-            {isScanning ? "Pointez vers un code-barres" : "Appuyez sur SCANNER"}
-          </Text>
-          {/* top-right buttons */}
-          <View style={styles.topButtons}>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => router.push("/settings")}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.iconBtnText}>⚙️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => router.push("/history")}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.iconBtnText}>📋</Text>
-              {historyCount > 0 && (
-                <View style={styles.historyBadge}>
-                  <Text style={styles.historyBadgeText}>
-                    {historyCount > 99 ? "99+" : historyCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
+
+        {/* ── offline banner ── */}
+        {(!isOnline || pendingBarcodes.length > 0) && (
+          <Animated.View style={[styles.offlineBanner, offlineStyle, { paddingTop: topPad + 6 }]}>
+            <Text style={styles.offlineIcon}>{isOnline ? "🔄" : "📡"}</Text>
+            <Text style={styles.offlineText}>
+              {isOnline
+                ? `Synchronisation de ${pendingBarcodes.length} scan(s)…`
+                : `Hors ligne — ${pendingBarcodes.length} scan(s) en attente`}
+            </Text>
+            {isOnline && pendingBarcodes.length > 0 && (
+              <TouchableOpacity onPress={processPendingQueue}>
+                <Text style={styles.offlineRetry}>↻</Text>
+              </TouchableOpacity>
+            )}
+          </Animated.View>
+        )}
+
+        {/* ── header ── */}
+        <View style={[styles.header, { paddingTop: (!isOnline || pendingBarcodes.length > 0) ? 0 : topPad + 10 }]}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerTitle}>
+              <Text style={styles.appArabic}>حلال</Text>
+              <Text style={styles.appName}>
+                <Text style={styles.appNameGreen}>Halal</Text>
+                <Text style={styles.appNameGold}>Scan</Text>
+              </Text>
+            </View>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity style={styles.headerBtn} onPress={() => router.push("/settings")} activeOpacity={0.75}>
+                <Text style={styles.headerBtnIcon}>⚙️</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.headerBtn} onPress={() => router.push("/history")} activeOpacity={0.75}>
+                <Text style={styles.headerBtnIcon}>📋</Text>
+                {historyCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{historyCount > 99 ? "99+" : historyCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
+          <Text style={styles.headerSub}>
+            {isScanning ? "Pointez le code-barres vers le cadre" : "Appuyez sur SCANNER pour commencer"}
+          </Text>
         </View>
 
-        {/* scan frame corners */}
+        {/* ── scan frame ── */}
         <View style={styles.scanFrameWrapper} pointerEvents="none">
           <View style={[styles.scanFrame, { width: SCAN_W, height: SCAN_H }]}>
+            {/* corners */}
             <View style={[styles.corner, styles.tl, isScanning && styles.cornerActive]} />
             <View style={[styles.corner, styles.tr, isScanning && styles.cornerActive]} />
             <View style={[styles.corner, styles.bl, isScanning && styles.cornerActive]} />
@@ -294,26 +339,34 @@ export default function ScannerScreen() {
               <Animated.View style={[styles.scanLine, scanLineStyle]} />
             )}
           </View>
+          {isScanning && (
+            <Text style={styles.scanHint}>EAN-13 · EAN-8 · UPC · QR</Text>
+          )}
         </View>
 
-        {/* bottom */}
-        <View style={[styles.bottom, { paddingBottom: botPad }]}>
+        {/* ── bottom ── */}
+        <View style={[styles.bottom, { paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 24) }]}>
           {isLoading ? (
             <View style={styles.loadingBox}>
-              <ActivityIndicator size="large" color={colors.scannerButton} />
+              <ActivityIndicator size="large" color={colors.gold} />
               <Text style={styles.loadingText}>ANALYSE EN COURS…</Text>
             </View>
           ) : (
             <Animated.View style={buttonAnimStyle}>
               <TouchableOpacity
-                style={[styles.scanBtn, { backgroundColor: btnBg, shadowColor: btnBg }]}
                 onPress={toggleScan}
-                activeOpacity={0.85}
+                activeOpacity={0.88}
+                style={styles.scanBtnOuter}
               >
-                <Text style={styles.scanBtnIcon}>{isScanning ? "⏹" : "📷"}</Text>
-                <Text style={styles.scanBtnText}>
-                  {isScanning ? "ARRÊTER" : "SCANNER"}
-                </Text>
+                <LinearGradient
+                  colors={isScanning ? ["#C03020", "#8B1A10"] : [colors.gold, colors.goldLight, "#A07820"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.scanBtn}
+                >
+                  <Text style={styles.scanBtnIcon}>{isScanning ? "⏹" : "📷"}</Text>
+                  <Text style={styles.scanBtnText}>{isScanning ? "ARRÊTER" : "SCANNER"}</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </Animated.View>
           )}
@@ -328,6 +381,7 @@ export default function ScannerScreen() {
           reason={scanResult.reason}
           ingredientsText={scanResult.ingredientsText}
           ingredientsList={scanResult.ingredientsList}
+          isOfflineQueued={scanResult.isOfflineQueued}
           onDismiss={handleDismiss}
           onWhitelist={handleWhitelist}
           isWhitelisted={isWhitelisted(scanResult.barcode)}
@@ -337,98 +391,70 @@ export default function ScannerScreen() {
   );
 }
 
-// ─── styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-
   center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-    paddingHorizontal: 32,
-    gap: 20,
+    flex: 1, alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.background, paddingHorizontal: 36, gap: 24,
   },
 
   // vignette
   vignetteContainer: { ...StyleSheet.absoluteFillObject, flexDirection: "column" },
-  vigTop: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)", maxHeight: "35%" },
+  vigTop: { maxHeight: "38%", flex: 1 },
   vigRow: { flexDirection: "row", height: SCAN_H },
-  vigSide: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)" },
+  vigSide: { flex: 1, backgroundColor: "rgba(5,9,8,0.72)" },
   vigHole: {},
-  vigBottom: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)" },
+  vigBottom: { flex: 1 },
 
-  // overlay
   overlay: { flex: 1, justifyContent: "space-between" },
+
+  // offline banner
+  offlineBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 8,
+    backgroundColor: "rgba(240,165,0,0.15)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(240,165,0,0.3)",
+  },
+  offlineIcon: { fontSize: 16 },
+  offlineText: { flex: 1, fontSize: 13, color: colors.warningAmber, fontWeight: "600" },
+  offlineRetry: { fontSize: 20, color: colors.warningAmber, fontWeight: "700" },
 
   // header
   header: {
-    alignItems: "center",
     paddingHorizontal: 20,
-    paddingBottom: 14,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    position: "relative",
+    paddingBottom: 16,
+    backgroundColor: "rgba(5,9,8,0.70)",
   },
-  appArabic: {
-    fontSize: 28,
-    color: colors.halalGreen,
-    textAlign: "center",
-    lineHeight: 34,
-  },
-  appTitle: {
-    fontSize: 30,
-    fontWeight: "900",
-    letterSpacing: 1.5,
-  },
-  appTitleHalal: {
-    fontSize: 30,
-    fontWeight: "900",
-    color: colors.halalGreen,
-    letterSpacing: 1.5,
-  },
-  appTitleScan: {
-    fontSize: 30,
-    fontWeight: "900",
-    color: colors.scannerButton,
-    letterSpacing: 1.5,
-  },
-  appSubtitle: {
-    fontSize: 17,
-    color: "rgba(255,255,255,0.85)",
-    marginTop: 4,
-    fontWeight: "600",
-  },
-
-  // top-right icon buttons
-  topButtons: {
-    position: "absolute",
-    right: 10,
-    bottom: 10,
+  headerContent: {
     flexDirection: "row",
-    gap: 6,
-  },
-  iconBtn: {
-    padding: 8,
-    position: "relative",
-  },
-  iconBtnText: { fontSize: 26 },
-  historyBadge: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    backgroundColor: colors.scannerButton,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
+    justifyContent: "space-between",
+    marginBottom: 8,
   },
-  historyBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: colors.scannerButtonText,
+  headerTitle: { flexDirection: "row", alignItems: "center", gap: 10 },
+  appArabic: { fontSize: 30, color: colors.halalGreen, lineHeight: 38 },
+  appName: { fontSize: 32, fontWeight: "900", letterSpacing: 1 },
+  appNameGreen: { color: colors.halalGreen },
+  appNameGold: { color: colors.gold },
+  headerButtons: { flexDirection: "row", gap: 4 },
+  headerBtn: { padding: 10, position: "relative" },
+  headerBtnIcon: { fontSize: 28 },
+  badge: {
+    position: "absolute", top: 4, right: 4,
+    backgroundColor: colors.haramRed,
+    borderRadius: 10, minWidth: 20, height: 20,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 4,
+  },
+  badgeText: { fontSize: 11, fontWeight: "900", color: "#FFF" },
+  headerSub: {
+    fontSize: 17,
+    color: "rgba(255,255,255,0.75)",
+    fontWeight: "500",
+    textAlign: "center",
   },
 
   // scan frame
@@ -437,91 +463,69 @@ const styles = StyleSheet.create({
     top: 0, bottom: 0, left: 0, right: 0,
     alignItems: "center",
     justifyContent: "center",
+    gap: 14,
   },
   scanFrame: { position: "relative" },
   corner: {
     position: "absolute",
-    width: 36,
-    height: 36,
-    borderColor: "rgba(255,255,255,0.45)",
+    width: 40, height: 40,
+    borderColor: "rgba(255,255,255,0.3)",
     borderWidth: 3,
   },
-  cornerActive: { borderColor: colors.scannerButton },
+  cornerActive: { borderColor: colors.gold },
   tl: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
   tr: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
   bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
   br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
   scanLine: {
-    position: "absolute",
-    top: 0,
-    left: 10,
-    right: 10,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: colors.scannerButton,
+    position: "absolute", top: 0, left: 8, right: 8,
+    height: 3, borderRadius: 2, backgroundColor: colors.gold,
+    shadowColor: colors.gold, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+  },
+  scanHint: {
+    fontSize: 12, color: "rgba(255,255,255,0.45)",
+    fontWeight: "600", letterSpacing: 1.5, textAlign: "center",
   },
 
   // bottom
   bottom: {
     alignItems: "center",
-    paddingHorizontal: 32,
     paddingTop: 20,
-    backgroundColor: "rgba(0,0,0,0.65)",
+    paddingHorizontal: 32,
+    backgroundColor: "rgba(5,9,8,0.75)",
   },
-  loadingBox: { alignItems: "center", gap: 14, paddingVertical: 36 },
+  loadingBox: { alignItems: "center", gap: 16, paddingVertical: 38 },
   loadingText: {
-    color: colors.scannerButton,
-    fontSize: 19,
-    fontWeight: "700",
-    letterSpacing: 1,
+    color: colors.gold, fontSize: 18, fontWeight: "800", letterSpacing: 2,
   },
-
-  // scanner button
+  scanBtnOuter: {
+    borderRadius: 110,
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 32,
+    elevation: 18,
+  },
   scanBtn: {
-    borderRadius: 120,
-    width: 190,
-    height: 190,
+    width: 200, height: 200,
+    borderRadius: 100,
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55,
-    shadowRadius: 28,
-    elevation: 14,
   },
-  scanBtnIcon: { fontSize: 52, lineHeight: 62 },
+  scanBtnIcon: { fontSize: 58, lineHeight: 68 },
   scanBtnText: {
-    fontSize: 25,
-    fontWeight: "900",
-    color: colors.scannerButtonText,
-    letterSpacing: 2,
+    fontSize: 26, fontWeight: "900",
+    color: colors.scannerButtonText, letterSpacing: 2.5,
   },
 
   // permission
-  permIcon: { fontSize: 80 },
-  permTitle: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: colors.foreground,
-    textAlign: "center",
-  },
-  permText: {
-    fontSize: 18,
-    color: colors.foregroundDim,
-    textAlign: "center",
-    lineHeight: 28,
-  },
+  permIcon: { fontSize: 90, textAlign: "center" },
+  permTitle: { fontSize: 30, fontWeight: "900", color: colors.foreground, textAlign: "center" },
+  permText: { fontSize: 19, color: colors.foregroundDim, textAlign: "center", lineHeight: 30 },
   permBtn: {
-    backgroundColor: colors.scannerButton,
-    borderRadius: colors.radius,
-    paddingVertical: 20,
-    paddingHorizontal: 40,
-    marginTop: 12,
+    backgroundColor: colors.gold, borderRadius: colors.radius,
+    paddingVertical: 22, paddingHorizontal: 44, marginTop: 10,
   },
-  permBtnText: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: colors.scannerButtonText,
-    letterSpacing: 1,
-  },
+  permBtnText: { fontSize: 20, fontWeight: "900", color: colors.scannerButtonText, letterSpacing: 1.5 },
 });

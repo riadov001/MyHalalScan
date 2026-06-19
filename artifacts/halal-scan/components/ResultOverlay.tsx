@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import * as Speech from "expo-speech";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -28,42 +29,67 @@ interface ResultOverlayProps {
   reason?: string;
   ingredientsText?: string;
   ingredientsList?: string[];
+  isOfflineQueued?: boolean;
   onDismiss: () => void;
   onWhitelist: () => void;
   isWhitelisted: boolean;
 }
 
-const CONFIG: Record<
-  ScanResult,
-  { bg: string; icon: string; title: string; speech: string }
-> = {
+interface ResultConfig {
+  gradientColors: [string, string, string];
+  iconBg: string;
+  icon: string;
+  title: string;
+  speech: string;
+  textColor: string;
+  dimColor: string;
+  accentColor: string;
+}
+
+const CONFIGS: Record<ScanResult, ResultConfig> = {
   halal: {
-    bg: colors.halalGreen,
+    gradientColors: ["#051A0D", "#071F10", "#040D08"],
+    iconBg: "rgba(29,177,99,0.15)",
     icon: "✅",
     title: "CE PRODUIT EST HALAL",
-    speech: "Ce produit est halal",
+    speech: "Ce produit est halal.",
+    textColor: "#FFFFFF",
+    dimColor: "rgba(255,255,255,0.55)",
+    accentColor: colors.halalGreen,
   },
   haram: {
-    bg: colors.haramRed,
+    gradientColors: ["#1A0505", "#200707", "#0F0303"],
+    iconBg: "rgba(229,57,53,0.15)",
     icon: "❌",
     title: "CE PRODUIT N'EST PAS HALAL",
     speech: "Attention ! Ce produit n'est pas halal.",
+    textColor: "#FFFFFF",
+    dimColor: "rgba(255,255,255,0.55)",
+    accentColor: colors.haramRed,
   },
   warning: {
-    bg: colors.warningYellow,
+    gradientColors: ["#180E00", "#1F1300", "#0F0900"],
+    iconBg: "rgba(240,165,0,0.15)",
     icon: "⚠️",
     title: "VÉRIFICATION NÉCESSAIRE",
     speech: "Vérification nécessaire pour ce produit.",
+    textColor: "#FFFFFF",
+    dimColor: "rgba(255,255,255,0.55)",
+    accentColor: colors.warningAmber,
   },
   unknown: {
-    bg: colors.warningYellow,
+    gradientColors: ["#0A0A0A", "#111111", "#080808"],
+    iconBg: "rgba(103,122,112,0.15)",
     icon: "❓",
     title: "PRODUIT INCONNU",
     speech: "Produit inconnu. Vérifiez les ingrédients.",
+    textColor: "#FFFFFF",
+    dimColor: "rgba(255,255,255,0.5)",
+    accentColor: colors.mutedForeground,
   },
 };
 
-const AUTO_DISMISS_SEC = 15;
+const AUTO_DISMISS_SEC = 16;
 
 export default function ResultOverlay({
   result,
@@ -72,27 +98,25 @@ export default function ResultOverlay({
   reason,
   ingredientsText,
   ingredientsList,
+  isOfflineQueued,
   onDismiss,
   onWhitelist,
   isWhitelisted,
 }: ResultOverlayProps) {
   const insets = useSafeAreaInsets();
-  const cfg = CONFIG[result];
+  const cfg = isOfflineQueued
+    ? { ...CONFIGS.unknown, icon: "📡", title: "EN ATTENTE DE RÉSEAU" }
+    : CONFIGS[result];
+
   const [countdown, setCountdown] = useState(AUTO_DISMISS_SEC);
   const [showIngredients, setShowIngredients] = useState(false);
   const countdownRef = useRef(AUTO_DISMISS_SEC);
   const dismissed = useRef(false);
 
-  const textColor =
-    result === "warning" || result === "unknown" ? "#1A0F00" : "#FFFFFF";
-  const dimTextColor =
-    result === "warning" || result === "unknown"
-      ? "rgba(26,15,0,0.65)"
-      : "rgba(255,255,255,0.65)";
-
   const hasIngredients =
-    (ingredientsList && ingredientsList.length > 0) ||
-    (ingredientsText && ingredientsText.trim().length > 0);
+    !isOfflineQueued &&
+    ((ingredientsList && ingredientsList.length > 0) ||
+      (ingredientsText && ingredientsText.trim().length > 0));
 
   const displayIngredients =
     ingredientsList && ingredientsList.length > 0
@@ -102,13 +126,12 @@ export default function ResultOverlay({
           .map((s) => s.trim())
           .filter((s) => s.length > 0) ?? [];
 
-  // ── entrance animation ───────────────────────────────────────────────────────
   const opacity = useSharedValue(0);
-  const translateY = useSharedValue(60);
+  const translateY = useSharedValue(80);
 
   useEffect(() => {
-    opacity.value = withTiming(1, { duration: 260 });
-    translateY.value = withSpring(0, { damping: 22, stiffness: 200 });
+    opacity.value = withTiming(1, { duration: 300 });
+    translateY.value = withSpring(0, { damping: 24, stiffness: 180 });
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({
@@ -116,35 +139,29 @@ export default function ResultOverlay({
     transform: [{ translateY: translateY.value }],
   }));
 
-  // ── speech ───────────────────────────────────────────────────────────────────
   const speakResult = () => {
-    Speech.speak(cfg.speech, {
-      language: "fr-FR",
-      rate: 0.88,
-      pitch: 1.0,
-    });
+    if (!isOfflineQueued) {
+      Speech.speak(cfg.speech, { language: "fr-FR", rate: 0.84, pitch: 1.0 });
+    }
   };
 
   useEffect(() => {
-    speakResult();
-
-    if (Platform.OS !== "web") {
-      if (result === "halal") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else if (result === "haram") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error), 600);
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    if (!isOfflineQueued) {
+      speakResult();
+      if (Platform.OS !== "web") {
+        if (result === "halal") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else if (result === "haram") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error), 700);
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
       }
     }
-
-    return () => {
-      Speech.stop();
-    };
+    return () => { Speech.stop(); };
   }, []);
 
-  // ── auto-dismiss countdown ────────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => {
       countdownRef.current -= 1;
@@ -166,24 +183,23 @@ export default function ResultOverlay({
     if (dismissed.current) return;
     dismissed.current = true;
     Speech.stop();
-    opacity.value = withTiming(0, { duration: 200 }, (done) => {
+    opacity.value = withTiming(0, { duration: 220 }, (done) => {
       if (done) runOnJS(onDismiss)();
     });
   };
 
-  const handleWhitelistPress = () => {
-    onWhitelist();
-    Speech.speak("Produit ajouté à votre liste approuvée.", { language: "fr-FR" });
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-  };
-
-  const topPad = insets.top + (Platform.OS === "web" ? 67 : 16);
-  const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 20);
+  const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 24);
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor: cfg.bg }, animStyle]}>
+    <Animated.View style={[StyleSheet.absoluteFillObject, { zIndex: 100 }, animStyle]}>
+      <LinearGradient
+        colors={cfg.gradientColors}
+        style={StyleSheet.absoluteFillObject}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
       <TouchableOpacity
         style={StyleSheet.absoluteFill}
         onPress={handleDismiss}
@@ -191,81 +207,78 @@ export default function ResultOverlay({
       />
 
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: topPad, paddingBottom: botPad },
-        ]}
+        contentContainerStyle={[styles.content, { paddingTop: topPad, paddingBottom: botPad }]}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        {/* countdown ring */}
+        {/* countdown */}
         <View style={styles.countdownRow}>
-          <View style={[styles.countdownBadge, { borderColor: textColor }]}>
-            <Text style={[styles.countdownNum, { color: textColor }]}>{countdown}</Text>
+          <View style={[styles.countdownBadge, { borderColor: cfg.accentColor }]}>
+            <Text style={[styles.countdownNum, { color: cfg.accentColor }]}>{countdown}</Text>
           </View>
-          <Text style={[styles.countdownHint, { color: textColor }]}>
+          <Text style={[styles.countdownHint, { color: cfg.dimColor }]}>
             Appuyez n'importe où pour continuer
           </Text>
         </View>
 
-        {/* main icon */}
-        <Text style={styles.icon}>{cfg.icon}</Text>
+        {/* icon with glow background */}
+        <View style={[styles.iconWrap, { backgroundColor: cfg.iconBg, borderColor: cfg.accentColor + "40" }]}>
+          <Text style={styles.icon}>{cfg.icon}</Text>
+        </View>
 
-        {/* title */}
-        <Text style={[styles.title, { color: textColor }]}>{cfg.title}</Text>
+        {/* result title */}
+        <Text style={[styles.title, { color: cfg.textColor }]}>{cfg.title}</Text>
+
+        {/* accent line */}
+        <View style={[styles.accentLine, { backgroundColor: cfg.accentColor }]} />
 
         {/* product name */}
         {!!productName && productName !== "Produit sans nom" && (
-          <Text style={[styles.productName, { color: textColor }]} numberOfLines={3}>
+          <Text style={[styles.productName, { color: cfg.textColor }]} numberOfLines={3}>
             {productName}
           </Text>
         )}
 
         {/* barcode */}
-        <Text style={[styles.barcode, { color: dimTextColor }]}>{barcode}</Text>
+        <Text style={[styles.barcode, { color: cfg.dimColor }]}>{barcode}</Text>
 
-        {/* reason chip */}
+        {/* reason */}
         {!!reason && (
-          <View style={[styles.reasonChip, { borderColor: textColor }]}>
-            <Text style={[styles.reasonText, { color: textColor }]}>
-              {result === "halal" ? "✓" : result === "haram" ? "✕" : "!"}{" "}
-              {reason}
+          <View style={[styles.reasonCard, { borderColor: cfg.accentColor + "50", backgroundColor: cfg.accentColor + "12" }]}>
+            <Text style={[styles.reasonLabel, { color: cfg.accentColor }]}>
+              {isOfflineQueued ? "📡 HORS LIGNE" : result === "halal" ? "✓ MOTIF" : result === "haram" ? "✕ MOTIF" : "! MOTIF"}
             </Text>
+            <Text style={[styles.reasonText, { color: cfg.textColor }]}>{reason}</Text>
           </View>
         )}
 
         {/* ingredients toggle */}
         {hasIngredients && (
           <TouchableOpacity
-            style={[styles.ingredientsToggle, { borderColor: textColor }]}
+            style={[styles.ingToggle, { borderColor: cfg.accentColor + "60" }]}
             onPress={() => setShowIngredients((v) => !v)}
             activeOpacity={0.75}
           >
-            <Text style={[styles.ingredientsToggleText, { color: textColor }]}>
+            <Text style={[styles.ingToggleText, { color: cfg.textColor }]}>
               🧪 {showIngredients ? "Masquer" : "Voir"} les ingrédients
               {displayIngredients.length > 0 ? ` (${displayIngredients.length})` : ""}
             </Text>
-            <Text style={[styles.chevron, { color: textColor }]}>
+            <Text style={[styles.chevron, { color: cfg.accentColor }]}>
               {showIngredients ? "▲" : "▼"}
             </Text>
           </TouchableOpacity>
         )}
 
-        {/* ingredients list */}
         {showIngredients && displayIngredients.length > 0 && (
-          <View style={[styles.ingredientsList, { borderColor: textColor }]}>
+          <View style={[styles.ingList, { borderColor: cfg.accentColor + "40" }]}>
             {displayIngredients.slice(0, 50).map((ing, i) => (
-              <Text
-                key={i}
-                style={[styles.ingredientItem, { color: textColor }]}
-                numberOfLines={2}
-              >
+              <Text key={i} style={[styles.ingItem, { color: cfg.dimColor }]} numberOfLines={2}>
                 {ing.startsWith("  •") ? ing : `• ${ing}`}
               </Text>
             ))}
             {displayIngredients.length > 50 && (
-              <Text style={[styles.ingredientMore, { color: dimTextColor }]}>
-                +{displayIngredients.length - 50} autres ingrédients…
+              <Text style={[styles.ingMore, { color: cfg.dimColor }]}>
+                +{displayIngredients.length - 50} autres…
               </Text>
             )}
           </View>
@@ -273,45 +286,44 @@ export default function ResultOverlay({
 
         {/* actions */}
         <View style={styles.actions}>
-          {/* replay speech */}
-          <TouchableOpacity
-            style={[styles.replayBtn, { borderColor: textColor }]}
-            onPress={speakResult}
-            activeOpacity={0.75}
-          >
-            <Text style={[styles.replayText, { color: textColor }]}>🔊 RÉPÉTER</Text>
-          </TouchableOpacity>
+          {!isOfflineQueued && (
+            <TouchableOpacity
+              style={[styles.actionBtn, { borderColor: cfg.accentColor + "70" }]}
+              onPress={speakResult}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.actionBtnText, { color: cfg.textColor }]}>🔊 RÉPÉTER</Text>
+            </TouchableOpacity>
+          )}
 
-          {/* whitelist */}
-          {(result === "warning" || result === "unknown" || result === "haram") &&
-            !isWhitelisted && (
-              <TouchableOpacity
-                style={[styles.whitelistBtn, { borderColor: textColor }]}
-                onPress={handleWhitelistPress}
-                activeOpacity={0.75}
-              >
-                <Text style={[styles.whitelistText, { color: textColor }]}>
-                  ✓ MARQUER COMME OK
-                </Text>
-              </TouchableOpacity>
-            )}
+          {!isOfflineQueued && (result === "warning" || result === "unknown" || result === "haram") && !isWhitelisted && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.whitelistBtn, { borderColor: cfg.accentColor }]}
+              onPress={() => {
+                onWhitelist();
+                Speech.speak("Produit ajouté à votre liste approuvée.", { language: "fr-FR" });
+                if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.actionBtnText, { color: cfg.accentColor }]}>✓ MARQUER COMME OK</Text>
+            </TouchableOpacity>
+          )}
 
           {isWhitelisted && (
-            <View style={[styles.whitelistBadge, { borderColor: textColor }]}>
-              <Text style={[styles.whitelistText, { color: textColor }]}>
-                ✓ DANS VOTRE LISTE APPROUVÉE
-              </Text>
+            <View style={[styles.actionBtn, { borderColor: colors.halalGreen + "80" }]}>
+              <Text style={[styles.actionBtnText, { color: colors.halalGreen }]}>✓ DANS VOTRE LISTE APPROUVÉE</Text>
             </View>
           )}
         </View>
 
-        {/* dismiss button */}
+        {/* dismiss */}
         <TouchableOpacity
-          style={[styles.dismissBtn, { backgroundColor: textColor }]}
+          style={[styles.dismissBtn, { backgroundColor: cfg.accentColor }]}
           onPress={handleDismiss}
           activeOpacity={0.85}
         >
-          <Text style={[styles.dismissText, { color: cfg.bg }]}>
+          <Text style={[styles.dismissText, { color: colors.background }]}>
             📷 SCANNER UN AUTRE PRODUIT
           </Text>
         </TouchableOpacity>
@@ -321,172 +333,77 @@ export default function ResultOverlay({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
-  },
   content: {
     alignItems: "center",
-    justifyContent: "center",
     paddingHorizontal: 24,
-    gap: 14,
+    gap: 16,
     flexGrow: 1,
-  },
-
-  // countdown
-  countdownRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  countdownBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    alignItems: "center",
     justifyContent: "center",
   },
-  countdownNum: {
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  countdownHint: {
-    fontSize: 13,
-    fontWeight: "600",
-    opacity: 0.75,
-    flexShrink: 1,
-  },
 
-  // icon & title
-  icon: { fontSize: 100, textAlign: "center", lineHeight: 120 },
-  title: {
-    fontSize: 28,
-    fontWeight: "900",
-    textAlign: "center",
-    letterSpacing: 0.8,
-    lineHeight: 36,
+  countdownRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  countdownBadge: {
+    width: 46, height: 46, borderRadius: 23,
+    borderWidth: 2, alignItems: "center", justifyContent: "center",
   },
+  countdownNum: { fontSize: 19, fontWeight: "900" },
+  countdownHint: { fontSize: 14, fontWeight: "500", flexShrink: 1 },
+
+  iconWrap: {
+    width: 150, height: 150, borderRadius: 75,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1.5,
+  },
+  icon: { fontSize: 90, textAlign: "center", lineHeight: 110 },
+
+  title: {
+    fontSize: 28, fontWeight: "900",
+    textAlign: "center", letterSpacing: 0.5, lineHeight: 36,
+  },
+  accentLine: { width: 60, height: 3, borderRadius: 2, marginVertical: -4 },
+
   productName: {
-    fontSize: 19,
-    fontWeight: "700",
-    textAlign: "center",
-    lineHeight: 28,
-    opacity: 0.92,
+    fontSize: 22, fontWeight: "700",
+    textAlign: "center", lineHeight: 32, opacity: 0.95,
   },
   barcode: {
-    fontSize: 13,
-    fontWeight: "500",
-    textAlign: "center",
-    letterSpacing: 1.5,
+    fontSize: 14, fontWeight: "500",
+    letterSpacing: 2.5, textAlign: "center",
   },
 
-  // reason chip
-  reasonChip: {
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    maxWidth: "100%",
+  reasonCard: {
+    width: "100%", borderWidth: 1.5,
+    borderRadius: 14, padding: 14, gap: 6,
   },
-  reasonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    textAlign: "center",
-    lineHeight: 18,
-  },
+  reasonLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 1 },
+  reasonText: { fontSize: 15, fontWeight: "500", lineHeight: 22 },
 
-  // ingredients
-  ingredientsToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    width: "100%",
+  ingToggle: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    width: "100%", borderWidth: 1, borderRadius: 14,
+    paddingVertical: 12, paddingHorizontal: 16,
   },
-  ingredientsToggleText: {
-    fontSize: 14,
-    fontWeight: "700",
-    flex: 1,
-  },
-  chevron: {
-    fontSize: 11,
-    fontWeight: "700",
-    marginLeft: 8,
-  },
-  ingredientsList: {
-    width: "100%",
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 5,
-    maxHeight: 220,
-  },
-  ingredientItem: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "500",
-    opacity: 0.85,
-  },
-  ingredientMore: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 4,
-    textAlign: "center",
-  },
+  ingToggleText: { fontSize: 15, fontWeight: "700", flex: 1 },
+  chevron: { fontSize: 11, fontWeight: "700", marginLeft: 8 },
 
-  // actions
+  ingList: {
+    width: "100%", borderWidth: 1,
+    borderRadius: 14, padding: 14, gap: 6, maxHeight: 240,
+  },
+  ingItem: { fontSize: 13, lineHeight: 20, fontWeight: "400" },
+  ingMore: { fontSize: 12, fontWeight: "600", textAlign: "center", marginTop: 4 },
+
   actions: { gap: 10, width: "100%", alignItems: "center" },
+  actionBtn: {
+    borderWidth: 1.5, borderRadius: colors.radius,
+    paddingVertical: 14, paddingHorizontal: 28, width: "100%", alignItems: "center",
+  },
+  whitelistBtn: { marginTop: 2 },
+  actionBtnText: { fontSize: 17, fontWeight: "700", letterSpacing: 0.5 },
 
-  replayBtn: {
-    borderWidth: 2,
-    borderRadius: colors.radius,
-    paddingVertical: 13,
-    paddingHorizontal: 28,
-  },
-  replayText: {
-    fontSize: 17,
-    fontWeight: "700",
-    textAlign: "center",
-    letterSpacing: 0.5,
-  },
-
-  whitelistBtn: {
-    borderWidth: 2,
-    borderRadius: colors.radius,
-    paddingVertical: 15,
-    paddingHorizontal: 28,
-    width: "100%",
-  },
-  whitelistBadge: {
-    borderWidth: 2,
-    borderRadius: colors.radius,
-    paddingVertical: 13,
-    paddingHorizontal: 24,
-  },
-  whitelistText: {
-    fontSize: 17,
-    fontWeight: "700",
-    textAlign: "center",
-    letterSpacing: 0.5,
-  },
-
-  // dismiss
   dismissBtn: {
-    borderRadius: colors.radius,
-    paddingVertical: 20,
-    paddingHorizontal: 28,
-    marginTop: 4,
-    width: "100%",
-    alignItems: "center",
+    width: "100%", borderRadius: colors.radius,
+    paddingVertical: 22, alignItems: "center", marginTop: 4,
   },
-  dismissText: {
-    fontSize: 18,
-    fontWeight: "800",
-    textAlign: "center",
-    letterSpacing: 0.8,
-  },
+  dismissText: { fontSize: 19, fontWeight: "900", letterSpacing: 1 },
 });

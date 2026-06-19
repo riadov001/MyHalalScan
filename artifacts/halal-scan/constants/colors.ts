@@ -1,34 +1,34 @@
 const colors = {
-  background: "#0A0F0C",
+  background: "#050908",
+  surface: "#0C1510",
+  surfaceElevated: "#121F18",
+
+  gold: "#D4A847",
+  goldLight: "#E8C870",
+  goldDim: "rgba(212,168,71,0.18)",
+
+  halalGreen: "#1DB163",
+  halalGreenBg: "#051A0D",
+  haramRed: "#E53935",
+  haramRedBg: "#1A0505",
+  warningAmber: "#F0A500",
+  warningAmberBg: "#180E00",
+
   foreground: "#FFFFFF",
-  foregroundDim: "#AAAAAA",
+  foregroundDim: "#B0BDB5",
+  mutedForeground: "#677A70",
 
-  halalGreen: "#1B8A52",
-  halalGreenDark: "#0A3320",
-  haramRed: "#D50000",
-  haramRedDark: "#5C0000",
-  warningYellow: "#E0A020",
-  warningYellowDark: "#5C3E00",
+  border: "#1A2B22",
+  card: "#0C1510",
+  muted: "#141F19",
 
-  scannerButton: "#C8922A",
-  scannerButtonText: "#FFFFFF",
+  scannerButton: "#D4A847",
+  scannerButtonText: "#050908",
 
-  card: "#111A13",
-  cardForeground: "#FFFFFF",
-  muted: "#1A2B1E",
-  mutedForeground: "#8A9E90",
-  border: "#243828",
+  radius: 18,
 
-  destructive: "#D50000",
-  destructiveForeground: "#FFFFFF",
-
-  primary: "#C8922A",
-  primaryForeground: "#FFFFFF",
-
-  text: "#FFFFFF",
-  tint: "#C8922A",
-
-  radius: 20,
+  primary: "#D4A847",
+  primaryForeground: "#050908",
 };
 
 export default colors;
