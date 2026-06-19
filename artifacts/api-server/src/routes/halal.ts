@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
 
-// ─── restriction lists ────────────────────────────────────────────────────────
+// ─── restriction & classification lists ──────────────────────────────────────
 
 const HARAM_INGREDIENTS: string[] = [
   // ── pork & derivatives (FR) ──
@@ -11,102 +11,113 @@ const HARAM_INGREDIENTS: string[] = [
   "bacon", "jambon", "jambon blanc", "jambon de pays", "prosciutto",
   "pancetta", "coppa", "mortadelle", "saucisson", "saucisson sec",
   "rillettes", "rillons", "chipolata", "boudin noir", "andouille",
-  "andouillette", "filet mignon de porc", "côte de porc", "poitrine de porc",
-  "jarret de porc", "épaule de porc", "longe de porc",
-  "gélatine de porc", "gélatine porcine", "protéines de porc",
-  "protéines de peau de porc", "collagène de porc",
-  // ── pork & derivatives (EN) ──
+  "andouillette", "filet mignon de porc", "cote de porc", "poitrine de porc",
+  "jarret de porc", "epaule de porc", "longe de porc",
+  "gelatine de porc", "gelatine porcine", "proteines de porc",
+  "proteines de peau de porc", "collagene de porc",
+  // ── pork (EN) ──
   "pork", "pig", "swine", "ham", "pork lard", "fatback", "pork belly",
   "pork rind", "crackling", "pepperoni", "pork gelatin", "pork collagen",
-  "pork fat", "pork skin", "lard",
+  "pork fat", "pork skin",
   // ── pork (DE) ──
   "schwein", "schweinefleisch", "speck", "schinken", "schweineschmalz",
-  "schweinebauch", "schweinefett",
+  "schweinebauch", "schweinefett", "schmalz",
   // ── pork (IT) ──
-  "maiale", "carne di maiale", "grasso di maiale", "pancetta di maiale",
+  "maiale", "carne di maiale", "grasso di maiale", "strutto",
   // ── pork (ES) ──
-  "cerdo", "carne de cerdo", "grasa de cerdo", "jamón", "tocino",
-  "chicharrón", "chorizo", "morcilla",
+  "cerdo", "carne de cerdo", "grasa de cerdo", "jamon", "tocino",
+  "chicharron", "chorizo", "morcilla", "manteca de cerdo",
   // ── pork (NL) ──
-  "varken", "varkensvlees", "varkensspek", "varkensvet",
+  "varken", "varkensvlees", "varkensspek", "varkensvet", "spek",
   // ── pork (PL) ──
-  "wieprzowina", "słonina", "szynka wieprzowa",
+  "wieprzowina", "slonina", "szynka wieprzowa",
+  // ── pork (PT) ──
+  "porco", "toucinho", "linguica", "chourico",
   // ── alcohol (FR) ──
-  "alcool", "alcool éthylique", "éthanol", "ethanol",
-  "alcool de grain", "alcool de vin", "alcool modifié",
-  "vin", "vin blanc", "vin rouge", "vin rosé", "vin de cuisine",
-  "bière", "biere", "malt de bière", "bière d'orge",
+  "alcool ethylique", "ethanol",
+  "alcool de grain", "alcool de vin", "alcool modifie",
+  "vin blanc", "vin rouge", "vin rose", "vin de cuisine",
+  "biere", "malt de biere", "biere d orge",
   "rhum", "vodka", "whisky", "whiskey", "cognac", "brandy", "liqueur",
-  "gin", "champagne", "crémant", "prosecco", "cava", "porto",
-  "vermouth", "sake", "cidre alcoolisé", "calvados", "armagnac",
-  "eau-de-vie", "kirsch", "schnapps", "absinthe", "pastis",
-  "anisette", "amaretto", "cointreau", "baileys",
+  "gin", "champagne", "cremant", "prosecco", "cava", "porto",
+  "vermouth", "sake", "cidre alcoolise", "calvados", "armagnac",
+  "kirsch", "schnapps", "absinthe", "pastis",
+  "anisette", "amaretto",
   // ── alcohol (EN) ──
-  "alcohol", "ethyl alcohol", "wine", "beer", "rum", "vodka", "whiskey",
-  "whisky", "cognac", "brandy", "liqueur", "gin", "champagne", "sake",
-  "mead", "hard cider", "spirits", "bourbon", "cider",
+  "alcohol", "ethyl alcohol", "rum", "bourbon", "mead",
+  "hard cider", "spirits", "wine spirits", "beer extract",
   // ── alcohol (DE) ──
-  "alkohol", "ethanol", "wein", "bier", "weinbrand",
+  "alkohol", "wein", "weinbrand",
   // ── alcohol (IT) ──
-  "alcol", "vino", "birra", "rum", "grappa",
+  "alcol", "vino", "birra", "grappa",
   // ── alcohol (ES) ──
-  "alcohol", "vino", "cerveza", "ron", "aguardiente",
-  // ── blood (FR/EN) ──
-  "sang", "sang de bœuf", "sang de porc", "plasma sanguin",
-  "sérum sanguin", "blood", "blood plasma", "blood serum", "albumine de sang",
-  // ── blood (DE) ──
-  "blut", "blutplasma",
-  // ── gelatin unspecified (high risk) ──
-  "gélatine", "gelatine", "gelatin", "gelatina",
-  "gélatine hydrolysée", "protéines de gélatine",
+  "aguardiente",
+  // ── blood (FR/EN/DE) ──
+  "sang de boeuf", "sang de porc", "plasma sanguin",
+  "serum sanguin", "blood plasma", "blood serum", "albumine de sang",
+  "blutplasma", "blut",
+  // ── gelatin — unspecified (high risk: source unknown) ──
+  // NOTE: "gelatine" alone is intentionally NOT here.
+  // We only flag it when it has no safe qualifier (see masking step below).
+  "gelatine de porc", "pork gelatin", "gelatine porcine",
   // ── haram e-numbers ──
-  "e441",  // gelatin
-  "e542",  // bone phosphate
+  "e441",   // gelatin (pork/bovine, unspecified)
+  "e542",   // bone phosphate
+];
+
+// These are the haram terms that include "gelatine" / "gelatin" without a safe qualifier.
+// They are checked AFTER the masking step removes safe compounds.
+const HARAM_GELATIN_TERMS: string[] = [
+  "gelatine", "gelatine hydrolyse", "proteines de gelatine",
+  "gelatin", "gelatina",
 ];
 
 const WARNING_INGREDIENTS: string[] = [
   // ── glycerides / emulsifiers (may be animal-derived) ──
-  "e471", "mono et diglycérides d'acides gras",
-  "monoglycérides", "diglycérides",
-  "mono- and diglycerides", "mono and diglycerides",
+  "e471", "mono et diglycerides d acides gras",
+  "monoglycerides", "diglycerides",
+  "mono and diglycerides",
   "e472a", "e472b", "e472c", "e472d", "e472e", "e472f",
   "e473", "e474", "e475", "e476", "e477", "e478", "e479b",
   // ── glycerol / glycerine ──
-  "e422", "glycérine", "glycérol", "glycerine", "glycerol",
-  "monostéarate de glycérine", "distéarate de glycérine",
-  "glyceryl", "glyceryl monostearate",
+  "e422", "glycerine", "glycerol",
+  "monostearate de glycerine", "distearate de glycerine",
+  "glyceryl monostearate",
   // ── stearates ──
-  "e570", "acide stéarique", "stearic acid", "stéarine",
-  "e470a", "e470b", "stearate", "stéarate",
+  "e570", "acide stearique", "stearic acid", "stearine",
+  "e470a", "e470b", "stearate",
   // ── glyceryl triacetate ──
-  "e1518", "triacétine", "triacetin",
+  "e1518", "triacetin",
   // ── l-cysteine ──
-  "e920", "l-cystéine", "l-cysteine", "cystéine",
+  "e920", "l cysteine", "cysteine",
   // ── rennet / présure ──
-  "présure", "rennet", "rennin", "présure animale",
-  "enzymes de coagulation", "lab-ferment", "chymosin",
+  "presure", "rennet", "rennin", "presure animale",
+  "enzymes de coagulation", "chymosin",
   // ── insect-derived colorings ──
   "e120", "carmin", "carmine", "cochenille",
   "rouge cochenille", "acide carminique", "carminic acid",
   "e904", "shellac", "laque de gomme",
   // ── natural flavors (source unknown) ──
-  "arômes naturels", "arôme naturel", "natural flavors",
-  "natural flavour", "natural flavor", "natürliche aromen",
+  "aromes naturels", "arome naturel", "natural flavors",
+  "natural flavour", "naturliche aromen",
   "aroma naturale", "aromas naturales",
-  // ── gelatin bovine / unspecified (if not in haram list already) ──
-  "gélatine bovine", "bovine gelatin", "beef gelatin",
-  "collagène", "collagen", "peptides de collagène",
+  // ── gelatin from bovine / unspecified source ──
+  // NOTE: added by masking step result, not checked directly here
+  // ── collagen (non-pork) ──
+  "collagene", "collagen", "peptides de collagene",
   // ── whey / casein ──
-  "lactosérum", "whey", "caséine", "casein",
+  "lactoserum", "whey", "caseine", "casein",
   // ── tallow / suif ──
   "suif", "tallow", "beef tallow",
+  // ── malt extract (non-alcoholic food use, but source of debate) ──
+  "extrait de malt",
 ];
 
 const HARAM_CATEGORIES: string[] = [
   "en:beers", "en:wines", "en:spirits", "en:alcoholic-beverages",
   "en:alcohol", "en:alcohols", "en:hard-ciders", "en:ciders",
   "en:champagnes", "en:sparkling-wines", "en:red-wines", "en:white-wines",
-  "en:rosé-wines", "en:whiskies", "en:vodkas", "en:rums", "en:gins",
+  "en:rose-wines", "en:whiskies", "en:vodkas", "en:rums", "en:gins",
   "en:brandies", "en:liqueurs", "en:aperitifs", "en:sake",
   "en:bourbons", "en:meads", "en:malt-beverages",
   "fr:bieres", "fr:biere", "fr:vins", "fr:alcools",
@@ -122,13 +133,13 @@ const HARAM_LABELS: string[] = [
 
 const HALAL_LABELS: string[] = [
   "halal", "en:halal", "sans porc", "no pork",
-  "certifié halal", "certified halal", "halal certified",
+  "certifie halal", "certified halal", "halal certified",
   "halal certified by", "fr:halal",
 ];
 
 const HARAM_NAME_KEYWORDS: string[] = [
-  "bière", "biere", "beer", "lager", "ale", "stout", "pilsner", "pilsen",
-  "vin blanc", "vin rouge", "vin rosé", "champagne", "prosecco", "cava",
+  "biere", "beer", "lager", "ale", "stout", "pilsner", "pilsen",
+  "vin blanc", "vin rouge", "vin rose", "champagne", "prosecco", "cava",
   "vodka", "whisky", "whiskey", "rhum", "rum", "gin", "cognac", "brandy",
   "liqueur", "calvados", "armagnac", "porto", "vermouth", "sake",
   "hard cider", "cidre alcool",
@@ -180,6 +191,7 @@ function normalise(text: string): string {
     .trim();
 }
 
+/** Word-boundary aware containment check */
 function containsTerm(haystack: string, term: string): boolean {
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "i");
@@ -257,7 +269,7 @@ function parseIngredientsList(product: Record<string, unknown>): string[] {
     if (result.length > 0) return result;
   }
 
-  // Fall back to best available text field
+  // Fall back to best available text field (split by comma/semicolon)
   for (const field of INGREDIENT_TEXT_FIELDS) {
     const v = product[field];
     if (typeof v === "string" && v.trim()) {
@@ -271,6 +283,95 @@ function parseIngredientsList(product: Record<string, unknown>): string[] {
 
   return result;
 }
+
+// ─── compound masking ────────────────────────────────────────────────────────
+//
+// IMPORTANT: These safe compound phrases are neutralised BEFORE haram/warning
+// checks to prevent false positives. Longer/more-specific phrases are listed
+// first so they match before their shorter sub-phrases.
+
+interface MaskResult {
+  maskedText: string;
+  /** Found gelatine from bovine source (→ warning) */
+  bovineGelatin: boolean;
+  /** Found gelatine from fish source (→ warning) */
+  fishGelatin: boolean;
+}
+
+/** Replace safe compound phrases with a neutral token, return what was found. */
+function maskSafeCompounds(normText: string): MaskResult {
+  let text = normText;
+  let bovineGelatin = false;
+  let fishGelatin = false;
+
+  const replaceAll = (t: string, phrase: string) =>
+    t.split(phrase).join(" __SAFE__ ");
+
+  // ── Vinegar (all forms) — alcohol fully converted to acetic acid → halal ──
+  const vinegarPhrases = [
+    "vinaigre de vin blanc", "vinaigre de vin rouge", "vinaigre de vin",
+    "vinaigre balsamique", "vinaigre de cidre", "vinaigre de biere",
+    "vinaigre de malt", "vinaigre de riz", "vinaigre de fruits",
+    "vinaigre d alcool", "vinaigre blanc",
+    "vinegar", "aceto balsamico", "aceto di vino",
+    "wine vinegar", "cider vinegar", "balsamic vinegar",
+    "apfelessig", "weinessig", "weissweinessig", "rotweinessig",
+  ];
+  for (const p of vinegarPhrases) text = replaceAll(text, p);
+
+  // ── Brewer's yeast — it is yeast, not beer → halal ──
+  const brewersYeast = [
+    "levure de biere", "levures de biere", "extrait de levure de biere",
+    "hefeextrakt", "bierhefe", "brewer s yeast", "brewers yeast",
+    "lievito di birra",
+  ];
+  for (const p of brewersYeast) text = replaceAll(text, p);
+
+  // ── Vegetable / fruit / seaweed gelatin — halal ──
+  const vegGelatin = [
+    "gelatine vegetale", "gelatine de fruits", "gelatine de fruit",
+    "gelatine de riz", "gelatine d algues",
+    "vegetable gelatin", "vegetable gelatine",
+    "agar agar", "agar-agar", "gelatine agar",
+  ];
+  for (const p of vegGelatin) text = replaceAll(text, p);
+
+  // ── Fish gelatin — debatable (most scholars allow fish, mark as warning) ──
+  const fishGelPhrases = [
+    "gelatine de poisson", "fish gelatin", "fish gelatine",
+    "collagene de poisson", "fish collagen",
+    "gelatine de saumon", "gelatine de thon", "gelatine de cabillaud",
+  ];
+  for (const p of fishGelPhrases) {
+    if (text.includes(p)) { fishGelatin = true; text = replaceAll(text, p); }
+  }
+
+  // ── Bovine gelatin — requires halal slaughter, unverifiable → warning ──
+  const bovineGelPhrases = [
+    "gelatine bovine", "bovine gelatin", "bovine gelatine",
+    "beef gelatin", "beef gelatine",
+    "gelatine de boeuf", "gelatine de veau",
+    "collagene bovin", "collagen bovin",
+  ];
+  for (const p of bovineGelPhrases) {
+    if (text.includes(p)) { bovineGelatin = true; text = replaceAll(text, p); }
+  }
+
+  // ── Malt used as flour/starch (non-alcoholic food use) ──
+  const malt = [
+    "farine de malt", "amidon de malt", "farine d orge maltee",
+    "extrait de malt d orge", "germe de malt",
+  ];
+  for (const p of malt) text = replaceAll(text, p);
+
+  // ── Wine derivatives safe to ignore because "vin" is part of another safe word ──
+  // "vinaigre" is already handled above; also handle "vino" in "vino cotto"
+  // when already processed.
+
+  return { maskedText: text, bovineGelatin, fishGelatin };
+}
+
+// ─── main analysis ────────────────────────────────────────────────────────────
 
 type HalalResult = "halal" | "haram" | "warning" | "unknown";
 
@@ -299,13 +400,14 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
   const ingredientsText = collectIngredientTexts(product);
   const ingredientsList = parseIngredientsList(product);
 
-  // 1. Explicit labels
+  // 1 ── Explicit labels ───────────────────────────────────────────────────────
   const labels =
     toTagsString(product["labels_tags"]) + "," +
     toTagsString(product["labels"]);
+  const normLabels = normalise(labels);
 
   for (const l of HARAM_LABELS) {
-    if (labels.includes(l)) {
+    if (normLabels.includes(normalise(l))) {
       return {
         result: "haram", productName,
         reason: `Label: ${l}`,
@@ -315,7 +417,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     }
   }
   for (const l of HALAL_LABELS) {
-    if (labels.includes(l)) {
+    if (normLabels.includes(normalise(l))) {
       return {
         result: "halal", productName,
         reason: "Certifié halal",
@@ -325,7 +427,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     }
   }
 
-  // 2. Categories
+  // 2 ── Haram categories ──────────────────────────────────────────────────────
   const categories = toTagsString(product["categories_tags"]);
   for (const cat of HARAM_CATEGORIES) {
     if (categories.includes(cat)) {
@@ -338,7 +440,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     }
   }
 
-  // 3. Alcohol content
+  // 3 ── Alcohol content (nutriments) ─────────────────────────────────────────
   const nutriments = product["nutriments"] as Record<string, unknown> | undefined;
   if (nutriments) {
     const alc = Number(nutriments["alcohol_100g"] ?? nutriments["alcohol"] ?? 0);
@@ -352,7 +454,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     }
   }
 
-  // 4. Product name keywords
+  // 4 ── Product name haram keywords ──────────────────────────────────────────
   const nameLower = normalise(productName);
   const genericName = normalise(
     ((product["generic_name_fr"] as string) || (product["generic_name"] as string) || "")
@@ -368,7 +470,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     }
   }
 
-  // 5. Allergens
+  // 5 ── Allergens ─────────────────────────────────────────────────────────────
   const allergens = toTagsString(product["allergens_tags"]);
   if (allergens.includes("en:pork") || allergens.includes("fr:porc")) {
     return {
@@ -379,7 +481,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     };
   }
 
-  // 6. Full ingredient text (all languages + structured array)
+  // 6 ── Ingredient text analysis ──────────────────────────────────────────────
   const hasIngredients = ingredientsText.trim().length > 0;
 
   if (!hasIngredients) {
@@ -390,8 +492,11 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     };
   }
 
-  const ingredients = normalise(ingredientsText);
+  // Normalise and MASK safe compounds first to prevent false positives
+  const normRaw = normalise(ingredientsText);
+  const { maskedText: ingredients, bovineGelatin, fishGelatin } = maskSafeCompounds(normRaw);
 
+  // 6a – Haram terms (explicit pork/alcohol/blood/etc.)
   for (const ing of HARAM_INGREDIENTS) {
     if (containsTerm(ingredients, normalise(ing))) {
       return {
@@ -403,16 +508,35 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     }
   }
 
+  // 6b – Unspecified gelatin (not fish/bovine/vegetable — those are masked already)
+  for (const g of HARAM_GELATIN_TERMS) {
+    if (containsTerm(ingredients, normalise(g))) {
+      return {
+        result: "haram", productName,
+        reason: `Gélatine d'origine non précisée (risque élevé): "${g}"`,
+        foundInDatabase: true, hasIngredients: true,
+        ingredientsText, ingredientsList,
+      };
+    }
+  }
+
+  // 6c – Warning ingredients
   const detectedWarnings: string[] = [];
+
+  // Fish/bovine gelatin detected during masking → warning
+  if (fishGelatin) detectedWarnings.push("gélatine de poisson (origine poisson)");
+  if (bovineGelatin) detectedWarnings.push("gélatine bovine (abattage non certifié)");
+
   for (const ing of WARNING_INGREDIENTS) {
     if (containsTerm(ingredients, normalise(ing))) {
       detectedWarnings.push(ing);
     }
   }
+
   if (detectedWarnings.length > 0) {
     return {
       result: "warning", productName,
-      reason: `Ingrédient(s) à vérifier: ${detectedWarnings.slice(0, 3).join(", ")}`,
+      reason: `À vérifier: ${detectedWarnings.slice(0, 3).join(", ")}`,
       foundInDatabase: true, hasIngredients: true,
       ingredientsText, ingredientsList,
     };
@@ -426,7 +550,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
   };
 }
 
-// ─── fetch helpers ────────────────────────────────────────────────────────────
+// ─── fetch helpers ─────────────────────────────────────────────────────────────
 
 async function fetchFromOFF(url: string): Promise<Record<string, unknown> | null> {
   try {
@@ -456,7 +580,7 @@ function hasUsableIngredients(product: Record<string, unknown>): boolean {
   return false;
 }
 
-// ─── route ────────────────────────────────────────────────────────────────────
+// ─── route ─────────────────────────────────────────────────────────────────────
 
 router.get("/halal/analyze/:barcode", async (req, res) => {
   const { barcode } = req.params;
@@ -468,7 +592,7 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
 
   let product: Record<string, unknown> | null = null;
 
-  // Step 1: try world endpoint with explicit fields
+  // Step 1: world endpoint with explicit fields list
   const worldUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
   product = await fetchFromOFF(worldUrl);
 
@@ -479,7 +603,7 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
       const countryUrl = `https://${country}.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
       const countryProduct = await fetchFromOFF(countryUrl);
       if (countryProduct && hasUsableIngredients(countryProduct)) {
-        // Merge: keep world data but replace empty ingredient fields with country data
+        // Merge: patch missing ingredient fields from country mirror
         for (const field of INGREDIENT_TEXT_FIELDS) {
           if (!product[field] && countryProduct[field]) {
             product[field] = countryProduct[field];
@@ -494,7 +618,7 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
     }
   }
 
-  // Step 3: if still not found, try world endpoint without fields restriction (v0)
+  // Step 3: product not found at all — try v0 API
   if (!product) {
     const v0Url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
     product = await fetchFromOFF(v0Url);
@@ -504,7 +628,7 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
     res.json({
       result: "unknown",
       productName: "Produit non trouvé",
-      reason: "Ce produit n'existe pas dans la base de données OpenFoodFacts",
+      reason: "Ce produit n'est pas référencé dans la base OpenFoodFacts",
       foundInDatabase: false,
       hasIngredients: false,
     } satisfies AnalysisResult);
