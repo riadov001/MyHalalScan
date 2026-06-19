@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "HalalScan",
-    "slug": "halal-scan",
+    "slug": "myhalalscan",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -24,10 +24,15 @@
     },
     "android": {
       "package": "com.halalscan.app",
-      "permissions": ["CAMERA", "VIBRATE"],
+      "permissions": [
+        "CAMERA",
+        "VIBRATE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#0D0D0D"
+        "backgroundColor": "#0A0F0C"
       }
     },
     "web": {
@@ -52,6 +57,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5f3d61f3-9220-4561-9832-5882866b7347"
+      }
+    },
+    "owner": "jatekapplications"
   }
 }
