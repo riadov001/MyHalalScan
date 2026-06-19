@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "MdQKYSBP1TlHGCZk9ZUfd"
+uri = "file://artifacts/halal-scan/assets/images/icon.png"
+type = "image"
+title = "halalscan app icon"

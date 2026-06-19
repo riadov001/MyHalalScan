@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "HalalScan",
+    "slug": "halal-scan",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "halal-scan",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0D0D0D",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0D0D"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "HalalScan a besoin de la caméra pour scanner les codes-barres des produits alimentaires.",
+        "NSSpeechRecognitionUsageDescription": "HalalScan utilise la synthèse vocale pour annoncer les résultats."
+      }
+    },
+    "android": {
+      "permissions": ["CAMERA", "VIBRATE"]
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "HalalScan a besoin de la caméra pour scanner les codes-barres."
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

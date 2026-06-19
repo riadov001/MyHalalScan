@@ -1,0 +1,27 @@
+kind = "mobile"
+  previewPath = "/"
+  title = "HalalScan"
+  version = "1.0.0"
+  id = "artifacts/halal-scan"
+  router = "expo-domain"
+
+  [[integratedSkills]]
+  name = "expo"
+  version = "1.0.0"
+
+  [[services]]
+  name = "expo"
+  paths = [ "/" ]
+  localPort = 23221
+
+  [services.development]
+  run = "pnpm --filter @workspace/halal-scan run dev"
+
+  [services.production]
+  build = [ "pnpm", "--filter", "@workspace/halal-scan", "run", "build" ]
+  run = [ "pnpm", "--filter", "@workspace/halal-scan", "run", "serve" ]
+
+  [services.env]
+  PORT = "23221"
+  BASE_PATH = "/"
+  

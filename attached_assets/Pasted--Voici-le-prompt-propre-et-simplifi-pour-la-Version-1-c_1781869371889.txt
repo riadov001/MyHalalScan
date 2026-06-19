@@ -1,0 +1,44 @@
+✅ Voici le prompt propre et simplifié pour la Version 1 (copie-colle directement dans Replit Agent) :
+
+Crée une application React Native Expo nommée HalalScan.
+Objectif Version 1 : Application très simple pour personnes âgées ou malvoyantes. On scanne un code-barres → résultat immédiat avec couleurs plein écran + voix + sons (presque aucun texte).
+UX/UI obligatoire :
+	•	Fond très sombre.
+	•	Écran principal : gros bouton jaune vif “SCANNER” au centre + caméra en arrière-plan.
+	•	Après scan :
+	◦	Écran entier VERT vif avec gros ✅ → Voix : “Ce produit est halal”
+	◦	Écran entier ROUGE vif avec gros ❌ → Voix : “Attention, ce produit n’est pas halal”
+	◦	Écran JAUNE → Voix : “Vérification nécessaire”
+	•	Utilise expo-speech pour la voix en français.
+	•	Ajoute sons et vibrations.
+Fonctionnalités :
+	•	Scan code-barres avec react-native-vision-camera.
+	•	Appel à l’API OpenFoodFacts : https://world.openfoodfacts.org/api/v2/product/{barcode}.json
+	•	Analyse avec cette liste exacte d’ingrédients (aucune autre) :
+const FORBIDDEN_INGREDIENTS = {
+  ko: [ // Rouge
+    "porc", "graisse de porc", "saindoux", "lard", "bacon", "gélatine porcine",
+    "éthanol", "ethanol", "alcool éthylique", "alcohol", "vin", "rhum", "cognac", "brandy", "liqueur", "bière",
+    "gélatine", "e441", "collagène", "peptides de collagène", "gélatine hydrolysée"
+  ],
+  warning: [ // Jaune
+    "e471", "mono et diglycérides", "monoglycérides", "diglycérides",
+    "e472a", "e472b", "e472c", "e472d", "e472e", "e472f",
+    "e473", "e474", "e475", "e476", "e477", "e478", "e479b",
+    "e422", "glycérine", "glycérol", "monostéarate de glycérine",
+    "distéarate de glycérine", "triacétine", "e1518",
+    "e570", "acide stéarique", "e470a", "e470b"
+  ]
+};
+	•	Priorité aux labels OpenFoodFacts (“halal”, “sans porc”, etc.).
+	•	Cache local (AsyncStorage) des produits scannés.
+	•	Bouton “Marquer comme OK” pour ajouter à la liste blanche locale.
+Après création :
+	•	Installe toutes les dépendances nécessaires.
+	•	Rends l’interface minimaliste avec très gros éléments et contraste fort.
+	•	Génère un build Android preview avec EAS pour avoir un APK installable.
+	•	Donne les commandes exactes pour le build.
+Commence maintenant.
+
+Tu peux coller ce prompt tel quel dans Replit Agent. Une fois l’application créée, dis-lui simplement : "Maintenant fais le build Android preview avec EAS"
+Tu veux que je modifie encore quelque chose avant ?
