@@ -15,6 +15,7 @@ interface ScanContextType {
   whitelist: string[];
   addToCache: (product: CachedProduct) => Promise<void>;
   addToWhitelist: (barcode: string) => Promise<void>;
+  clearCache: () => Promise<void>;
   getCached: (barcode: string) => CachedProduct | null;
   isWhitelisted: (barcode: string) => boolean;
 }
@@ -50,6 +51,15 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const clearCache = useCallback(async () => {
+    setCache({});
+    setWhitelist([]);
+    await Promise.all([
+      AsyncStorage.removeItem(CACHE_KEY),
+      AsyncStorage.removeItem(WHITELIST_KEY),
+    ]);
+  }, []);
+
   const addToWhitelist = useCallback(async (barcode: string) => {
     setWhitelist((prev) => {
       if (prev.includes(barcode)) return prev;
@@ -82,7 +92,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ScanContext.Provider
-      value={{ cache, whitelist, addToCache, addToWhitelist, getCached, isWhitelisted }}
+      value={{ cache, whitelist, addToCache, addToWhitelist, clearCache, getCached, isWhitelisted }}
     >
       {children}
     </ScanContext.Provider>

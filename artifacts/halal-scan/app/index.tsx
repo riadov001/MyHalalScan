@@ -1,5 +1,6 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,7 +30,7 @@ const { width: SCREEN_W } = Dimensions.get("window");
 const SCAN_W = Math.min(SCREEN_W * 0.78, 300);
 const SCAN_H = 190;
 
-// ─── ingredient analysis ─────────────────────────────────────────────────────
+// ─── ingredient / product analysis ───────────────────────────────────────────
 
 const FORBIDDEN_INGREDIENTS = {
   ko: [
@@ -48,17 +49,42 @@ const FORBIDDEN_INGREDIENTS = {
   ],
 };
 
-function buildLabelsString(data: Record<string, unknown>): string {
-  const parts: string[] = [];
-  const raw = data["labels"];
-  if (typeof raw === "string") parts.push(raw.toLowerCase());
-  const tags = data["labels_tags"];
-  if (Array.isArray(tags)) {
-    parts.push((tags as string[]).join(",").toLowerCase());
-  } else if (typeof tags === "string") {
-    parts.push(tags.toLowerCase());
-  }
-  return parts.join(",");
+// Categories on OpenFoodFacts that are definitively haram
+const HARAM_CATEGORIES = [
+  "en:beers", "en:wines", "en:spirits", "en:alcoholic-beverages",
+  "en:alcohol", "en:alcohols", "en:hard-ciders", "en:ciders",
+  "en:champagnes", "en:sparkling-wines", "en:red-wines", "en:white-wines",
+  "en:rosé-wines", "en:whiskies", "en:vodkas", "en:rums", "en:gins",
+  "en:brandies", "en:liqueurs", "en:aperitifs",
+  "fr:bieres", "fr:biere", "fr:vins", "fr:alcools", "fr:spiritueux",
+  "en:pork", "en:pork-products", "en:pork-meats",
+  "fr:porc", "fr:charcuteries",
+];
+
+// Keywords in product name / generic name that signal haram
+const HARAM_NAME_KEYWORDS = [
+  "bière", "biere", "beer", "lager", "ale", "stout", "pilsner", "pilsen",
+  "vin blanc", "vin rouge", "vin rosé", "champagne", "prosecco", "cava",
+  "vodka", "whisky", "whiskey", "rhum", "rum", "gin", "cognac", "brandy",
+  "liqueur", "calvados", "armagnac", "porto", "vermouth", "sake",
+  "hard cider", "cidre alcool",
+  "jambon", "lardons", "saucisson", "chorizo pork", "bacon",
+];
+
+const HALAL_LABELS = [
+  "halal", "en:halal", "sans porc", "no pork",
+  "certifié halal", "certified halal", "halal certified",
+];
+
+const HARAM_LABELS = [
+  "pork", "alcohol", "wine", "beer", "en:non-halal",
+  "en:contains-alcohol",
+];
+
+function toTagsString(val: unknown): string {
+  if (Array.isArray(val)) return (val as string[]).join(",").toLowerCase();
+  if (typeof val === "string") return val.toLowerCase();
+  return "";
 }
 
 function analyzeProduct(data: Record<string, unknown>): {
@@ -69,15 +95,14 @@ function analyzeProduct(data: Record<string, unknown>): {
     (data["product_name_fr"] as string) ||
     (data["product_name"] as string) ||
     (data["product_name_en"] as string) ||
+    (data["generic_name_fr"] as string) ||
+    (data["generic_name"] as string) ||
     "Produit sans nom";
 
-  const labels = buildLabelsString(data);
-
-  const HARAM_LABELS = ["pork", "alcohol", "wine", "beer", "en:non-halal"];
-  const HALAL_LABELS = [
-    "halal", "en:halal", "sans porc", "no pork",
-    "certifié halal", "certified halal", "halal certified",
-  ];
+  // 1. Explicit halal / haram labels
+  const labels =
+    toTagsString(data["labels_tags"]) + "," +
+    toTagsString(data["labels"]);
 
   for (const l of HARAM_LABELS) {
     if (labels.includes(l)) return { result: "haram", productName };
@@ -86,6 +111,39 @@ function analyzeProduct(data: Record<string, unknown>): {
     if (labels.includes(l)) return { result: "halal", productName };
   }
 
+  // 2. Categories (catches beers/wines with no ingredients listed)
+  const categories = toTagsString(data["categories_tags"]);
+  for (const cat of HARAM_CATEGORIES) {
+    if (categories.includes(cat)) return { result: "haram", productName };
+  }
+
+  // 3. Alcohol content in nutriments (any non-zero value = alcohol)
+  const nutriments = data["nutriments"] as Record<string, unknown> | undefined;
+  if (nutriments) {
+    const alcoholPer100g = Number(nutriments["alcohol_100g"] ?? nutriments["alcohol"]);
+    if (alcoholPer100g > 0) return { result: "haram", productName };
+  }
+
+  // 4. Product name contains obvious haram keyword
+  const nameLower = productName.toLowerCase();
+  const genericName = (
+    (data["generic_name_fr"] as string) ||
+    (data["generic_name"] as string) ||
+    ""
+  ).toLowerCase();
+  for (const kw of HARAM_NAME_KEYWORDS) {
+    if (nameLower.includes(kw) || genericName.includes(kw)) {
+      return { result: "haram", productName };
+    }
+  }
+
+  // 5. Allergens (pork gelatin triggers haram)
+  const allergens = toTagsString(data["allergens_tags"]);
+  if (allergens.includes("en:pork") || allergens.includes("fr:porc")) {
+    return { result: "haram", productName };
+  }
+
+  // 6. Ingredients text analysis
   const ingredients = (
     (data["ingredients_text_fr"] as string) ||
     (data["ingredients_text"] as string) ||
@@ -122,12 +180,12 @@ export default function ScannerScreen() {
   const scanCooldown = useRef(false);
   const isLoadingRef = useRef(false);
 
-  const { addToCache, addToWhitelist, getCached, isWhitelisted } = useScanContext();
+  const { addToCache, addToWhitelist, getCached, isWhitelisted, cache } = useScanContext();
+  const historyCount = Object.keys(cache).length;
 
   // ── animations ──────────────────────────────────────────────────────────────
   const scanLineY = useSharedValue(0);
   const buttonPulse = useSharedValue(1);
-  const buttonGlow = useSharedValue(1);
 
   useEffect(() => {
     if (isScanning) {
@@ -144,7 +202,6 @@ export default function ScannerScreen() {
     } else {
       cancelAnimation(scanLineY);
       scanLineY.value = withTiming(SCAN_H / 2);
-
       if (!isLoading) {
         buttonPulse.value = withRepeat(
           withSequence(
@@ -153,18 +210,9 @@ export default function ScannerScreen() {
           ),
           -1,
         );
-        buttonGlow.value = withRepeat(
-          withSequence(
-            withTiming(1.4, { duration: 1100 }),
-            withTiming(0.8, { duration: 1100 }),
-          ),
-          -1,
-        );
       } else {
         cancelAnimation(buttonPulse);
         buttonPulse.value = withTiming(1);
-        cancelAnimation(buttonGlow);
-        buttonGlow.value = withTiming(1);
       }
     }
   }, [isScanning, isLoading]);
@@ -172,7 +220,6 @@ export default function ScannerScreen() {
   const scanLineStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: scanLineY.value }],
   }));
-
   const buttonAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: buttonPulse.value }],
   }));
@@ -258,7 +305,7 @@ export default function ScannerScreen() {
     });
   }, []);
 
-  // ── permission loading ───────────────────────────────────────────────────────
+  // ── permission screens ───────────────────────────────────────────────────────
   if (!permission) {
     return (
       <View style={styles.center}>
@@ -275,11 +322,7 @@ export default function ScannerScreen() {
         <Text style={styles.permText}>
           HalalScan a besoin de la caméra pour scanner les codes-barres des produits.
         </Text>
-        <TouchableOpacity
-          style={styles.permBtn}
-          onPress={requestPermission}
-          activeOpacity={0.85}
-        >
+        <TouchableOpacity style={styles.permBtn} onPress={requestPermission} activeOpacity={0.85}>
           <Text style={styles.permBtnText}>AUTORISER LA CAMÉRA</Text>
         </TouchableOpacity>
       </View>
@@ -293,7 +336,6 @@ export default function ScannerScreen() {
 
   return (
     <View style={styles.container}>
-      {/* camera */}
       <CameraView
         style={StyleSheet.absoluteFill}
         facing="back"
@@ -303,20 +345,17 @@ export default function ScannerScreen() {
         onBarcodeScanned={isScanning ? handleBarcode : undefined}
       />
 
-      {/* vignette overlay — 4 rectangles framing the scan zone */}
-      {(isScanning || !isLoading) && (
-        <View style={styles.vignetteContainer} pointerEvents="none">
-          <View style={styles.vigTop} />
-          <View style={styles.vigRow}>
-            <View style={styles.vigSide} />
-            <View style={[styles.vigHole, { width: SCAN_W, height: SCAN_H }]} />
-            <View style={styles.vigSide} />
-          </View>
-          <View style={styles.vigBottom} />
+      {/* vignette — 4 rectangles framing the scan zone */}
+      <View style={styles.vignetteContainer} pointerEvents="none">
+        <View style={styles.vigTop} />
+        <View style={styles.vigRow}>
+          <View style={styles.vigSide} />
+          <View style={[styles.vigHole, { width: SCAN_W, height: SCAN_H }]} />
+          <View style={styles.vigSide} />
         </View>
-      )}
+        <View style={styles.vigBottom} />
+      </View>
 
-      {/* main overlay */}
       <View style={styles.overlay} pointerEvents="box-none">
         {/* header */}
         <View style={[styles.header, { paddingTop: topPad }]}>
@@ -324,6 +363,21 @@ export default function ScannerScreen() {
           <Text style={styles.appSubtitle}>
             {isScanning ? "Pointez vers un code-barres" : "Appuyez sur SCANNER"}
           </Text>
+          {/* history button */}
+          <TouchableOpacity
+            style={styles.historyBtn}
+            onPress={() => router.push("/history")}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.historyIcon}>📋</Text>
+            {historyCount > 0 && (
+              <View style={styles.historyBadge}>
+                <Text style={styles.historyBadgeText}>
+                  {historyCount > 99 ? "99+" : historyCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* scan frame corners */}
@@ -339,7 +393,7 @@ export default function ScannerScreen() {
           </View>
         </View>
 
-        {/* bottom controls */}
+        {/* bottom */}
         <View style={[styles.bottom, { paddingBottom: botPad }]}>
           {isLoading ? (
             <View style={styles.loadingBox}>
@@ -363,7 +417,6 @@ export default function ScannerScreen() {
         </View>
       </View>
 
-      {/* result overlay */}
       {scanResult && (
         <ResultOverlay
           result={scanResult.result}
@@ -400,13 +453,16 @@ const styles = StyleSheet.create({
   vigHole: {},
   vigBottom: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)" },
 
-  // header
+  // overlay
   overlay: { flex: 1, justifyContent: "space-between" },
+
+  // header
   header: {
     alignItems: "center",
     paddingHorizontal: 20,
     paddingBottom: 14,
     backgroundColor: "rgba(0,0,0,0.55)",
+    position: "relative",
   },
   appTitle: {
     fontSize: 34,
@@ -420,14 +476,35 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: "600",
   },
+  historyBtn: {
+    position: "absolute",
+    right: 16,
+    bottom: 14,
+    padding: 8,
+  },
+  historyIcon: { fontSize: 28 },
+  historyBadge: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    backgroundColor: colors.scannerButton,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  historyBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.scannerButtonText,
+  },
 
   // scan frame
   scanFrameWrapper: {
     position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
+    top: 0, bottom: 0, left: 0, right: 0,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -452,11 +529,6 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 2,
     backgroundColor: colors.scannerButton,
-    shadowColor: colors.scannerButton,
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
   },
 
   // bottom

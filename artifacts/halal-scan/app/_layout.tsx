@@ -43,8 +43,9 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <ScanProvider>
               <StatusBar style="light" />
-              <Stack screenOptions={{ headerShown: false }}>
+              <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
                 <Stack.Screen name="index" />
+                <Stack.Screen name="history" />
               </Stack>
             </ScanProvider>
           </GestureHandlerRootView>
