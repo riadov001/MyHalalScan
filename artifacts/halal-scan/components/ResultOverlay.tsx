@@ -25,6 +25,9 @@ interface ResultOverlayProps {
   result: ScanResult;
   productName: string;
   barcode: string;
+  reason?: string;
+  ingredientsText?: string;
+  ingredientsList?: string[];
   onDismiss: () => void;
   onWhitelist: () => void;
   isWhitelisted: boolean;
@@ -60,12 +63,15 @@ const CONFIG: Record<
   },
 };
 
-const AUTO_DISMISS_SEC = 10;
+const AUTO_DISMISS_SEC = 15;
 
 export default function ResultOverlay({
   result,
   productName,
   barcode,
+  reason,
+  ingredientsText,
+  ingredientsList,
   onDismiss,
   onWhitelist,
   isWhitelisted,
@@ -73,11 +79,28 @@ export default function ResultOverlay({
   const insets = useSafeAreaInsets();
   const cfg = CONFIG[result];
   const [countdown, setCountdown] = useState(AUTO_DISMISS_SEC);
+  const [showIngredients, setShowIngredients] = useState(false);
   const countdownRef = useRef(AUTO_DISMISS_SEC);
   const dismissed = useRef(false);
 
   const textColor =
     result === "warning" || result === "unknown" ? "#1A0F00" : "#FFFFFF";
+  const dimTextColor =
+    result === "warning" || result === "unknown"
+      ? "rgba(26,15,0,0.65)"
+      : "rgba(255,255,255,0.65)";
+
+  const hasIngredients =
+    (ingredientsList && ingredientsList.length > 0) ||
+    (ingredientsText && ingredientsText.trim().length > 0);
+
+  const displayIngredients =
+    ingredientsList && ingredientsList.length > 0
+      ? ingredientsList
+      : ingredientsText
+          ?.split(/[,;]\s*/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0) ?? [];
 
   // ── entrance animation ───────────────────────────────────────────────────────
   const opacity = useSharedValue(0);
@@ -193,13 +216,60 @@ export default function ResultOverlay({
 
         {/* product name */}
         {!!productName && productName !== "Produit sans nom" && (
-          <Text style={[styles.productName, { color: textColor }]} numberOfLines={4}>
+          <Text style={[styles.productName, { color: textColor }]} numberOfLines={3}>
             {productName}
           </Text>
         )}
 
         {/* barcode */}
-        <Text style={[styles.barcode, { color: textColor }]}>{barcode}</Text>
+        <Text style={[styles.barcode, { color: dimTextColor }]}>{barcode}</Text>
+
+        {/* reason chip */}
+        {!!reason && (
+          <View style={[styles.reasonChip, { borderColor: textColor }]}>
+            <Text style={[styles.reasonText, { color: textColor }]}>
+              {result === "halal" ? "✓" : result === "haram" ? "✕" : "!"}{" "}
+              {reason}
+            </Text>
+          </View>
+        )}
+
+        {/* ingredients toggle */}
+        {hasIngredients && (
+          <TouchableOpacity
+            style={[styles.ingredientsToggle, { borderColor: textColor }]}
+            onPress={() => setShowIngredients((v) => !v)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.ingredientsToggleText, { color: textColor }]}>
+              🧪 {showIngredients ? "Masquer" : "Voir"} les ingrédients
+              {displayIngredients.length > 0 ? ` (${displayIngredients.length})` : ""}
+            </Text>
+            <Text style={[styles.chevron, { color: textColor }]}>
+              {showIngredients ? "▲" : "▼"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ingredients list */}
+        {showIngredients && displayIngredients.length > 0 && (
+          <View style={[styles.ingredientsList, { borderColor: textColor }]}>
+            {displayIngredients.slice(0, 50).map((ing, i) => (
+              <Text
+                key={i}
+                style={[styles.ingredientItem, { color: textColor }]}
+                numberOfLines={2}
+              >
+                {ing.startsWith("  •") ? ing : `• ${ing}`}
+              </Text>
+            ))}
+            {displayIngredients.length > 50 && (
+              <Text style={[styles.ingredientMore, { color: dimTextColor }]}>
+                +{displayIngredients.length - 50} autres ingrédients…
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* actions */}
         <View style={styles.actions}>
@@ -258,8 +328,8 @@ const styles = StyleSheet.create({
   content: {
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 28,
-    gap: 18,
+    paddingHorizontal: 24,
+    gap: 14,
     flexGrow: 1,
   },
 
@@ -289,31 +359,87 @@ const styles = StyleSheet.create({
   },
 
   // icon & title
-  icon: { fontSize: 110, textAlign: "center", lineHeight: 130 },
+  icon: { fontSize: 100, textAlign: "center", lineHeight: 120 },
   title: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: "900",
     textAlign: "center",
     letterSpacing: 0.8,
-    lineHeight: 38,
+    lineHeight: 36,
   },
   productName: {
-    fontSize: 21,
+    fontSize: 19,
     fontWeight: "700",
     textAlign: "center",
-    lineHeight: 30,
+    lineHeight: 28,
     opacity: 0.92,
   },
   barcode: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "500",
     textAlign: "center",
-    opacity: 0.55,
     letterSpacing: 1.5,
   },
 
+  // reason chip
+  reasonChip: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    maxWidth: "100%",
+  },
+  reasonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+
+  // ingredients
+  ingredientsToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    width: "100%",
+  },
+  ingredientsToggleText: {
+    fontSize: 14,
+    fontWeight: "700",
+    flex: 1,
+  },
+  chevron: {
+    fontSize: 11,
+    fontWeight: "700",
+    marginLeft: 8,
+  },
+  ingredientsList: {
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 5,
+    maxHeight: 220,
+  },
+  ingredientItem: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "500",
+    opacity: 0.85,
+  },
+  ingredientMore: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 4,
+    textAlign: "center",
+  },
+
   // actions
-  actions: { gap: 12, width: "100%", alignItems: "center" },
+  actions: { gap: 10, width: "100%", alignItems: "center" },
 
   replayBtn: {
     borderWidth: 2,
@@ -342,7 +468,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   whitelistText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
     textAlign: "center",
     letterSpacing: 0.5,
@@ -353,12 +479,12 @@ const styles = StyleSheet.create({
     borderRadius: colors.radius,
     paddingVertical: 20,
     paddingHorizontal: 28,
-    marginTop: 6,
+    marginTop: 4,
     width: "100%",
     alignItems: "center",
   },
   dismissText: {
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: "800",
     textAlign: "center",
     letterSpacing: 0.8,

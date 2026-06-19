@@ -18,7 +18,19 @@ const HARAM_INGREDIENTS: string[] = [
   // ── pork & derivatives (EN) ──
   "pork", "pig", "swine", "ham", "pork lard", "fatback", "pork belly",
   "pork rind", "crackling", "pepperoni", "pork gelatin", "pork collagen",
-  "pork fat", "pork skin",
+  "pork fat", "pork skin", "lard",
+  // ── pork (DE) ──
+  "schwein", "schweinefleisch", "speck", "schinken", "schweineschmalz",
+  "schweinebauch", "schweinefett",
+  // ── pork (IT) ──
+  "maiale", "carne di maiale", "grasso di maiale", "pancetta di maiale",
+  // ── pork (ES) ──
+  "cerdo", "carne de cerdo", "grasa de cerdo", "jamón", "tocino",
+  "chicharrón", "chorizo", "morcilla",
+  // ── pork (NL) ──
+  "varken", "varkensvlees", "varkensspek", "varkensvet",
+  // ── pork (PL) ──
+  "wieprzowina", "słonina", "szynka wieprzowa",
   // ── alcohol (FR) ──
   "alcool", "alcool éthylique", "éthanol", "ethanol",
   "alcool de grain", "alcool de vin", "alcool modifié",
@@ -30,12 +42,20 @@ const HARAM_INGREDIENTS: string[] = [
   "eau-de-vie", "kirsch", "schnapps", "absinthe", "pastis",
   "anisette", "amaretto", "cointreau", "baileys",
   // ── alcohol (EN) ──
-  "alcohol", "wine", "beer", "rum", "vodka", "whiskey", "whisky",
-  "cognac", "brandy", "liqueur", "gin", "champagne", "sake",
-  "mead", "hard cider", "spirits", "bourbon",
+  "alcohol", "ethyl alcohol", "wine", "beer", "rum", "vodka", "whiskey",
+  "whisky", "cognac", "brandy", "liqueur", "gin", "champagne", "sake",
+  "mead", "hard cider", "spirits", "bourbon", "cider",
+  // ── alcohol (DE) ──
+  "alkohol", "ethanol", "wein", "bier", "weinbrand",
+  // ── alcohol (IT) ──
+  "alcol", "vino", "birra", "rum", "grappa",
+  // ── alcohol (ES) ──
+  "alcohol", "vino", "cerveza", "ron", "aguardiente",
   // ── blood (FR/EN) ──
   "sang", "sang de bœuf", "sang de porc", "plasma sanguin",
-  "sérum sanguin", "blood", "blood plasma", "blood serum",
+  "sérum sanguin", "blood", "blood plasma", "blood serum", "albumine de sang",
+  // ── blood (DE) ──
+  "blut", "blutplasma",
   // ── gelatin unspecified (high risk) ──
   "gélatine", "gelatine", "gelatin", "gelatina",
   "gélatine hydrolysée", "protéines de gélatine",
@@ -64,19 +84,22 @@ const WARNING_INGREDIENTS: string[] = [
   "e920", "l-cystéine", "l-cysteine", "cystéine",
   // ── rennet / présure ──
   "présure", "rennet", "rennin", "présure animale",
-  "enzymes de coagulation",
+  "enzymes de coagulation", "lab-ferment", "chymosin",
   // ── insect-derived colorings ──
   "e120", "carmin", "carmine", "cochenille",
   "rouge cochenille", "acide carminique", "carminic acid",
   "e904", "shellac", "laque de gomme",
   // ── natural flavors (source unknown) ──
   "arômes naturels", "arôme naturel", "natural flavors",
-  "natural flavour", "natural flavor",
+  "natural flavour", "natural flavor", "natürliche aromen",
+  "aroma naturale", "aromas naturales",
   // ── gelatin bovine / unspecified (if not in haram list already) ──
   "gélatine bovine", "bovine gelatin", "beef gelatin",
   "collagène", "collagen", "peptides de collagène",
   // ── whey / casein ──
   "lactosérum", "whey", "caséine", "casein",
+  // ── tallow / suif ──
+  "suif", "tallow", "beef tallow",
 ];
 
 const HARAM_CATEGORIES: string[] = [
@@ -111,6 +134,38 @@ const HARAM_NAME_KEYWORDS: string[] = [
   "hard cider", "cidre alcool",
   "jambon", "lardons", "saucisson", "bacon", "prosciutto",
   "porc", "pork", "chorizo",
+  "schwein", "speck", "schinken",
+];
+
+// All language ingredient fields to check
+const INGREDIENT_TEXT_FIELDS = [
+  "ingredients_text_fr", "ingredients_text",
+  "ingredients_text_en", "ingredients_text_de",
+  "ingredients_text_it", "ingredients_text_es",
+  "ingredients_text_nl", "ingredients_text_ar",
+  "ingredients_text_pt", "ingredients_text_pl",
+  "ingredients_text_ro", "ingredients_text_cs",
+  "ingredients_text_sk", "ingredients_text_hu",
+  "ingredients_text_da", "ingredients_text_sv",
+  "ingredients_text_fi", "ingredients_text_no",
+];
+
+// Fields to request from OpenFoodFacts API
+const OFF_FIELDS = [
+  "product_name", "product_name_fr", "product_name_en", "product_name_de",
+  "product_name_it", "product_name_es", "product_name_nl",
+  "generic_name", "generic_name_fr", "generic_name_en",
+  ...INGREDIENT_TEXT_FIELDS,
+  "ingredients",
+  "labels_tags", "labels",
+  "categories_tags",
+  "nutriments",
+  "allergens_tags",
+].join(",");
+
+// Country-specific OpenFoodFacts mirrors to try as fallbacks
+const OFF_COUNTRY_MIRRORS = [
+  "fr", "de", "it", "es", "be", "uk", "nl", "at", "ch",
 ];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -140,13 +195,7 @@ function toTagsString(val: unknown): string {
 function collectIngredientTexts(product: Record<string, unknown>): string {
   const texts: string[] = [];
 
-  const textFields = [
-    "ingredients_text_fr", "ingredients_text",
-    "ingredients_text_en", "ingredients_text_de",
-    "ingredients_text_es", "ingredients_text_it",
-    "ingredients_text_nl", "ingredients_text_ar",
-  ];
-  for (const field of textFields) {
+  for (const field of INGREDIENT_TEXT_FIELDS) {
     const v = product[field];
     if (typeof v === "string" && v.trim()) {
       texts.push(v.trim());
@@ -176,6 +225,53 @@ function collectIngredientTexts(product: Record<string, unknown>): string {
   return texts.join(" , ");
 }
 
+function parseIngredientsList(product: Record<string, unknown>): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  // Try structured ingredients array first (best quality)
+  const ingredientsArr = product["ingredients"];
+  if (Array.isArray(ingredientsArr) && ingredientsArr.length > 0) {
+    for (const ing of ingredientsArr) {
+      if (ing && typeof ing === "object") {
+        const obj = ing as Record<string, unknown>;
+        const text = (obj["text"] as string) ?? "";
+        if (text && !seen.has(text.toLowerCase())) {
+          seen.add(text.toLowerCase());
+          result.push(text);
+          const subIngs = obj["ingredients"];
+          if (Array.isArray(subIngs)) {
+            for (const sub of subIngs) {
+              if (sub && typeof sub === "object") {
+                const s = (sub as Record<string, unknown>)["text"] as string;
+                if (s && !seen.has(s.toLowerCase())) {
+                  seen.add(s.toLowerCase());
+                  result.push(`  • ${s}`);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (result.length > 0) return result;
+  }
+
+  // Fall back to best available text field
+  for (const field of INGREDIENT_TEXT_FIELDS) {
+    const v = product[field];
+    if (typeof v === "string" && v.trim()) {
+      return v
+        .split(/[,;]\s*/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .slice(0, 60);
+    }
+  }
+
+  return result;
+}
+
 type HalalResult = "halal" | "haram" | "warning" | "unknown";
 
 interface AnalysisResult {
@@ -184,6 +280,8 @@ interface AnalysisResult {
   reason: string;
   foundInDatabase: boolean;
   hasIngredients: boolean;
+  ingredientsText?: string;
+  ingredientsList?: string[];
 }
 
 function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
@@ -191,9 +289,15 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
     (product["product_name_fr"] as string) ||
     (product["product_name"] as string) ||
     (product["product_name_en"] as string) ||
+    (product["product_name_de"] as string) ||
+    (product["product_name_it"] as string) ||
+    (product["product_name_es"] as string) ||
     (product["generic_name_fr"] as string) ||
     (product["generic_name"] as string) ||
     "Produit sans nom";
+
+  const ingredientsText = collectIngredientTexts(product);
+  const ingredientsList = parseIngredientsList(product);
 
   // 1. Explicit labels
   const labels =
@@ -202,12 +306,22 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
 
   for (const l of HARAM_LABELS) {
     if (labels.includes(l)) {
-      return { result: "haram", productName, reason: `Label: ${l}`, foundInDatabase: true, hasIngredients: true };
+      return {
+        result: "haram", productName,
+        reason: `Label: ${l}`,
+        foundInDatabase: true, hasIngredients: true,
+        ingredientsText, ingredientsList,
+      };
     }
   }
   for (const l of HALAL_LABELS) {
     if (labels.includes(l)) {
-      return { result: "halal", productName, reason: "Certifié halal", foundInDatabase: true, hasIngredients: true };
+      return {
+        result: "halal", productName,
+        reason: "Certifié halal",
+        foundInDatabase: true, hasIngredients: true,
+        ingredientsText, ingredientsList,
+      };
     }
   }
 
@@ -215,7 +329,12 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
   const categories = toTagsString(product["categories_tags"]);
   for (const cat of HARAM_CATEGORIES) {
     if (categories.includes(cat)) {
-      return { result: "haram", productName, reason: `Catégorie: ${cat}`, foundInDatabase: true, hasIngredients: true };
+      return {
+        result: "haram", productName,
+        reason: `Catégorie: ${cat.replace(/^(en|fr):/, "")}`,
+        foundInDatabase: true, hasIngredients: true,
+        ingredientsText, ingredientsList,
+      };
     }
   }
 
@@ -224,7 +343,12 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
   if (nutriments) {
     const alc = Number(nutriments["alcohol_100g"] ?? nutriments["alcohol"] ?? 0);
     if (alc > 0) {
-      return { result: "haram", productName, reason: `Contient de l'alcool (${alc}%)`, foundInDatabase: true, hasIngredients: true };
+      return {
+        result: "haram", productName,
+        reason: `Contient de l'alcool (${alc}%)`,
+        foundInDatabase: true, hasIngredients: true,
+        ingredientsText, ingredientsList,
+      };
     }
   }
 
@@ -235,38 +359,101 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
   );
   for (const kw of HARAM_NAME_KEYWORDS) {
     if (nameLower.includes(normalise(kw)) || genericName.includes(normalise(kw))) {
-      return { result: "haram", productName, reason: `Nom du produit: "${kw}"`, foundInDatabase: true, hasIngredients: true };
+      return {
+        result: "haram", productName,
+        reason: `Nom du produit: "${kw}"`,
+        foundInDatabase: true, hasIngredients: true,
+        ingredientsText, ingredientsList,
+      };
     }
   }
 
   // 5. Allergens
   const allergens = toTagsString(product["allergens_tags"]);
   if (allergens.includes("en:pork") || allergens.includes("fr:porc")) {
-    return { result: "haram", productName, reason: "Allergène: porc", foundInDatabase: true, hasIngredients: true };
+    return {
+      result: "haram", productName,
+      reason: "Allergène: porc",
+      foundInDatabase: true, hasIngredients: true,
+      ingredientsText, ingredientsList,
+    };
   }
 
   // 6. Full ingredient text (all languages + structured array)
-  const rawIngredients = collectIngredientTexts(product);
-  const hasIngredients = rawIngredients.trim().length > 0;
+  const hasIngredients = ingredientsText.trim().length > 0;
 
   if (!hasIngredients) {
-    return { result: "unknown", productName, reason: "Aucun ingrédient renseigné dans la base de données", foundInDatabase: true, hasIngredients: false };
+    return {
+      result: "unknown", productName,
+      reason: "Aucun ingrédient renseigné dans la base de données",
+      foundInDatabase: true, hasIngredients: false,
+    };
   }
 
-  const ingredients = normalise(rawIngredients);
+  const ingredients = normalise(ingredientsText);
 
   for (const ing of HARAM_INGREDIENTS) {
     if (containsTerm(ingredients, normalise(ing))) {
-      return { result: "haram", productName, reason: `Ingrédient interdit: "${ing}"`, foundInDatabase: true, hasIngredients: true };
-    }
-  }
-  for (const ing of WARNING_INGREDIENTS) {
-    if (containsTerm(ingredients, normalise(ing))) {
-      return { result: "warning", productName, reason: `Ingrédient à vérifier: "${ing}"`, foundInDatabase: true, hasIngredients: true };
+      return {
+        result: "haram", productName,
+        reason: `Ingrédient interdit: "${ing}"`,
+        foundInDatabase: true, hasIngredients: true,
+        ingredientsText, ingredientsList,
+      };
     }
   }
 
-  return { result: "halal", productName, reason: "Aucun ingrédient interdit détecté", foundInDatabase: true, hasIngredients: true };
+  const detectedWarnings: string[] = [];
+  for (const ing of WARNING_INGREDIENTS) {
+    if (containsTerm(ingredients, normalise(ing))) {
+      detectedWarnings.push(ing);
+    }
+  }
+  if (detectedWarnings.length > 0) {
+    return {
+      result: "warning", productName,
+      reason: `Ingrédient(s) à vérifier: ${detectedWarnings.slice(0, 3).join(", ")}`,
+      foundInDatabase: true, hasIngredients: true,
+      ingredientsText, ingredientsList,
+    };
+  }
+
+  return {
+    result: "halal", productName,
+    reason: "Aucun ingrédient interdit détecté",
+    foundInDatabase: true, hasIngredients: true,
+    ingredientsText, ingredientsList,
+  };
+}
+
+// ─── fetch helpers ────────────────────────────────────────────────────────────
+
+async function fetchFromOFF(url: string): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "HalalScan/1.0 (contact@halalscan.app)" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as {
+      status: number;
+      product?: Record<string, unknown>;
+    };
+    if (json.status === 1 && json.product) return json.product;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function hasUsableIngredients(product: Record<string, unknown>): boolean {
+  for (const field of INGREDIENT_TEXT_FIELDS) {
+    const v = product[field];
+    if (typeof v === "string" && v.trim().length > 5) return true;
+  }
+  const arr = product["ingredients"];
+  if (Array.isArray(arr) && arr.length > 0) return true;
+  return false;
 }
 
 // ─── route ────────────────────────────────────────────────────────────────────
@@ -281,29 +468,36 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
 
   let product: Record<string, unknown> | null = null;
 
-  try {
-    const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-    const response = await fetch(url, {
-      headers: { "User-Agent": "HalalScan/1.0 (contact@halalscan.app)" },
-      signal: AbortSignal.timeout(10_000),
-    });
+  // Step 1: try world endpoint with explicit fields
+  const worldUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
+  product = await fetchFromOFF(worldUrl);
 
-    if (!response.ok) {
-      throw new Error(`OpenFoodFacts HTTP ${response.status}`);
+  // Step 2: if found but no ingredients, try country-specific mirrors
+  if (product && !hasUsableIngredients(product)) {
+    req.log.info({ barcode }, "No ingredients from world endpoint, trying country mirrors");
+    for (const country of OFF_COUNTRY_MIRRORS) {
+      const countryUrl = `https://${country}.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
+      const countryProduct = await fetchFromOFF(countryUrl);
+      if (countryProduct && hasUsableIngredients(countryProduct)) {
+        // Merge: keep world data but replace empty ingredient fields with country data
+        for (const field of INGREDIENT_TEXT_FIELDS) {
+          if (!product[field] && countryProduct[field]) {
+            product[field] = countryProduct[field];
+          }
+        }
+        if (!hasUsableIngredients(product) && countryProduct["ingredients"]) {
+          product["ingredients"] = countryProduct["ingredients"];
+        }
+        req.log.info({ barcode, country }, "Found ingredients from country mirror");
+        break;
+      }
     }
+  }
 
-    const json = (await response.json()) as {
-      status: number;
-      product?: Record<string, unknown>;
-    };
-
-    if (json.status === 1 && json.product) {
-      product = json.product;
-    }
-  } catch (err) {
-    req.log.warn({ err, barcode }, "OpenFoodFacts fetch failed");
-    res.status(502).json({ error: "Impossible de contacter OpenFoodFacts. Vérifiez votre connexion." });
-    return;
+  // Step 3: if still not found, try world endpoint without fields restriction (v0)
+  if (!product) {
+    const v0Url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
+    product = await fetchFromOFF(v0Url);
   }
 
   if (!product) {

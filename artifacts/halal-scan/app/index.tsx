@@ -32,6 +32,15 @@ const SCAN_H = 190;
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
+interface ScanState {
+  result: ScanResult;
+  productName: string;
+  barcode: string;
+  reason?: string;
+  ingredientsText?: string;
+  ingredientsList?: string[];
+}
+
 // ─── scanner screen ───────────────────────────────────────────────────────────
 
 export default function ScannerScreen() {
@@ -39,11 +48,7 @@ export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isScanning, setIsScanning] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [scanResult, setScanResult] = useState<{
-    result: ScanResult;
-    productName: string;
-    barcode: string;
-  } | null>(null);
+  const [scanResult, setScanResult] = useState<ScanState | null>(null);
 
   const lastScanned = useRef<string | null>(null);
   const scanCooldown = useRef(false);
@@ -117,6 +122,9 @@ export default function ScannerScreen() {
           result: isWhitelisted(barcode) ? "halal" : cached.result,
           productName: cached.productName,
           barcode,
+          reason: cached.reason,
+          ingredientsText: cached.ingredientsText,
+          ingredientsList: cached.ingredientsList,
         });
         return;
       }
@@ -130,11 +138,28 @@ export default function ScannerScreen() {
           reason?: string;
           foundInDatabase: boolean;
           hasIngredients: boolean;
+          ingredientsText?: string;
+          ingredientsList?: string[];
         };
 
         const finalResult = isWhitelisted(barcode) ? "halal" : json.result;
-        await addToCache({ barcode, result: json.result, productName: json.productName, timestamp: Date.now() });
-        setScanResult({ result: finalResult, productName: json.productName, barcode });
+        await addToCache({
+          barcode,
+          result: json.result,
+          productName: json.productName,
+          timestamp: Date.now(),
+          reason: json.reason,
+          ingredientsText: json.ingredientsText,
+          ingredientsList: json.ingredientsList,
+        });
+        setScanResult({
+          result: finalResult,
+          productName: json.productName,
+          barcode,
+          reason: json.reason,
+          ingredientsText: json.ingredientsText,
+          ingredientsList: json.ingredientsList,
+        });
       } catch {
         setScanResult({ result: "unknown", productName: "Erreur réseau", barcode });
       } finally {
@@ -232,21 +257,30 @@ export default function ScannerScreen() {
           <Text style={styles.appSubtitle}>
             {isScanning ? "Pointez vers un code-barres" : "Appuyez sur SCANNER"}
           </Text>
-          {/* history button */}
-          <TouchableOpacity
-            style={styles.historyBtn}
-            onPress={() => router.push("/history")}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.historyIcon}>📋</Text>
-            {historyCount > 0 && (
-              <View style={styles.historyBadge}>
-                <Text style={styles.historyBadgeText}>
-                  {historyCount > 99 ? "99+" : historyCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          {/* top-right buttons */}
+          <View style={styles.topButtons}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => router.push("/settings")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.iconBtnText}>⚙️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => router.push("/history")}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.iconBtnText}>📋</Text>
+              {historyCount > 0 && (
+                <View style={styles.historyBadge}>
+                  <Text style={styles.historyBadgeText}>
+                    {historyCount > 99 ? "99+" : historyCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* scan frame corners */}
@@ -291,6 +325,9 @@ export default function ScannerScreen() {
           result={scanResult.result}
           productName={scanResult.productName}
           barcode={scanResult.barcode}
+          reason={scanResult.reason}
+          ingredientsText={scanResult.ingredientsText}
+          ingredientsList={scanResult.ingredientsList}
           onDismiss={handleDismiss}
           onWhitelist={handleWhitelist}
           isWhitelisted={isWhitelisted(scanResult.barcode)}
@@ -362,27 +399,34 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: "600",
   },
-  historyBtn: {
+
+  // top-right icon buttons
+  topButtons: {
     position: "absolute",
-    right: 16,
-    bottom: 14,
-    padding: 8,
+    right: 10,
+    bottom: 10,
+    flexDirection: "row",
+    gap: 6,
   },
-  historyIcon: { fontSize: 28 },
+  iconBtn: {
+    padding: 8,
+    position: "relative",
+  },
+  iconBtnText: { fontSize: 26 },
   historyBadge: {
     position: "absolute",
     top: 2,
     right: 2,
     backgroundColor: colors.scannerButton,
     borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    minWidth: 18,
+    height: 18,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
   },
   historyBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "800",
     color: colors.scannerButtonText,
   },

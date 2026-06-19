@@ -8,6 +8,9 @@ export interface CachedProduct {
   result: ScanResult;
   productName: string;
   timestamp: number;
+  reason?: string;
+  ingredientsText?: string;
+  ingredientsList?: string[];
 }
 
 interface ScanContextType {
@@ -22,7 +25,7 @@ interface ScanContextType {
 
 const ScanContext = createContext<ScanContextType | null>(null);
 
-const CACHE_KEY = "@halalscan_cache";
+const CACHE_KEY = "@halalscan_cache_v2";
 const WHITELIST_KEY = "@halalscan_whitelist";
 
 export function ScanProvider({ children }: { children: React.ReactNode }) {
