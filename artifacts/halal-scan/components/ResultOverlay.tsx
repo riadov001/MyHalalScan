@@ -13,7 +13,6 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -138,7 +137,7 @@ export default function ResultOverlay({
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [onDismiss, opacity]);
 
   const handleDismiss = () => {
     if (dismissed.current) return;

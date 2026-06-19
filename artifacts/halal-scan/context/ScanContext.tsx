@@ -53,11 +53,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
 
   const clearCache = useCallback(async () => {
     setCache({});
-    setWhitelist([]);
-    await Promise.all([
-      AsyncStorage.removeItem(CACHE_KEY),
-      AsyncStorage.removeItem(WHITELIST_KEY),
-    ]);
+    await AsyncStorage.removeItem(CACHE_KEY);
   }, []);
 
   const addToWhitelist = useCallback(async (barcode: string) => {
