@@ -56,6 +56,7 @@ export default function HomeScreen() {
   const lastBarcode = useRef<string | null>(null);
   const cooldown = useRef(false);
   const loadingRef = useRef(false);
+  const scanningRef = useRef(false);
 
   const {
     addProduct, queueOfflineScan, whitelistProduct,
@@ -114,6 +115,7 @@ export default function HomeScreen() {
     if (cooldown.current || loadingRef.current || lastBarcode.current === barcode) return;
     cooldown.current = true;
     lastBarcode.current = barcode;
+    scanningRef.current = false;
     setScanning(false);
     setTorch(false);
     loadingRef.current = true;
@@ -164,6 +166,7 @@ export default function HomeScreen() {
   }, [getProduct, isWhitelisted, addProduct, queueOfflineScan, isOnline, pendingBarcodes]);
 
   const handleBarcodeScanned = useCallback(({ data }: { data: string }) => {
+    if (!scanningRef.current) return;
     processBarcode(data);
   }, [processBarcode]);
 
@@ -224,8 +227,10 @@ export default function HomeScreen() {
       withSpring(1, { damping: 14 }),
     );
     setScanning(v => {
-      if (v) { lastBarcode.current = null; cooldown.current = false; }
-      return !v;
+      const next = !v;
+      scanningRef.current = next;
+      if (!next) { lastBarcode.current = null; cooldown.current = false; }
+      return next;
     });
   }, [loading]);
 
@@ -317,7 +322,7 @@ export default function HomeScreen() {
           barcodeScannerSettings={{
             barcodeTypes: ["ean13","ean8","upc_a","upc_e","code128","code39","qr"],
           }}
-          onBarcodeScanned={scanning ? handleBarcodeScanned : undefined}
+          onBarcodeScanned={handleBarcodeScanned}
         />
 
         {/* subtle dark vignette */}
