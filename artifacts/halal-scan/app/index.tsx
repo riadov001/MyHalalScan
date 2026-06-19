@@ -122,23 +122,19 @@ export default function ScannerScreen() {
       }
 
       try {
-        const url = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json`;
-        const res = await fetch(url, {
-          headers: { "User-Agent": "HalalScan/1.0 (contact@halalscan.app)" },
-        });
+        const res = await fetch(`${API_BASE}/api/halal/analyze/${barcode}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as {
-          status: number;
-          product?: Record<string, unknown>;
+          result: ScanResult;
+          productName: string;
+          reason?: string;
+          foundInDatabase: boolean;
+          hasIngredients: boolean;
         };
 
-        if (json.status === 1 && json.product) {
-          const { result, productName } = analyzeProduct(json.product);
-          const finalResult = isWhitelisted(barcode) ? "halal" : result;
-          await addToCache({ barcode, result, productName, timestamp: Date.now() });
-          setScanResult({ result: finalResult, productName, barcode });
-        } else {
-          setScanResult({ result: "unknown", productName: "Produit non trouvé", barcode });
-        }
+        const finalResult = isWhitelisted(barcode) ? "halal" : json.result;
+        await addToCache({ barcode, result: json.result, productName: json.productName, timestamp: Date.now() });
+        setScanResult({ result: finalResult, productName: json.productName, barcode });
       } catch {
         setScanResult({ result: "unknown", productName: "Erreur réseau", barcode });
       } finally {

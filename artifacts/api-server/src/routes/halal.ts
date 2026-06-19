@@ -120,9 +120,15 @@ function normalise(text: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function containsTerm(haystack: string, term: string): boolean {
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "i");
+  return pattern.test(haystack);
 }
 
 function toTagsString(val: unknown): string {
@@ -250,14 +256,12 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
   const ingredients = normalise(rawIngredients);
 
   for (const ing of HARAM_INGREDIENTS) {
-    const norm = normalise(ing);
-    if (ingredients.includes(norm)) {
+    if (containsTerm(ingredients, normalise(ing))) {
       return { result: "haram", productName, reason: `Ingrédient interdit: "${ing}"`, foundInDatabase: true, hasIngredients: true };
     }
   }
   for (const ing of WARNING_INGREDIENTS) {
-    const norm = normalise(ing);
-    if (ingredients.includes(norm)) {
+    if (containsTerm(ingredients, normalise(ing))) {
       return { result: "warning", productName, reason: `Ingrédient à vérifier: "${ing}"`, foundInDatabase: true, hasIngredients: true };
     }
   }
