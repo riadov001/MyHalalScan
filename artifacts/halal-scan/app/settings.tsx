@@ -3,162 +3,83 @@ import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import colors from "@/constants/colors";
+import C from "@/constants/colors";
 
-const HARAM_GROUPS: { title: string; emoji: string; items: string[] }[] = [
+const HARAM: { emoji: string; title: string; items: string[] }[] = [
   {
-    emoji: "🐷",
-    title: "Porc & dérivés",
-    items: [
-      "Porc / Pork / Schwein / Cerdo / Maiale",
-      "Lard, saindoux, graisse de porc",
-      "Bacon, lardons, jambon, prosciutto",
-      "Pancetta, coppa, mortadelle, saucisson",
-      "Boudin noir, andouille, rillettes",
-      "Gélatine de porc / porcine",
-      "Collagène de porc, protéines de porc",
-      "Couenne, pork rind, crackling, speck",
-      "Strutto (IT), Schmalz (DE), Manteca (ES)",
-    ],
+    emoji: "🐷", title: "Porc & dérivés",
+    items: ["Porc · Pork · Schwein · Cerdo · Maiale", "Lard · Saindoux · Graisse de porc", "Bacon · Lardons · Jambon · Prosciutto", "Pancetta · Coppa · Mortadelle · Saucisson", "Boudin noir · Andouille · Rillettes", "Gélatine de porc / porcine", "Collagène de porc · Protéines de porc", "Couenne · Pork rind · Crackling · Speck"],
   },
   {
-    emoji: "🍺",
-    title: "Alcool",
-    items: [
-      "Alcool éthylique, éthanol",
-      "Vin blanc, vin rouge, vin rosé, vin de cuisine",
-      "Bière, malt de bière",
-      "Rhum, vodka, whisky, cognac, gin",
-      "Champagne, prosecco, crémant, cava",
-      "Liqueur, brandy, calvados, porto",
-      "Sake, vermouth, absinthe, pastis",
-      "Cidre alcoolisé, hard cider",
-    ],
+    emoji: "🍷", title: "Alcool",
+    items: ["Alcool éthylique · Éthanol", "Vin blanc · Vin rouge · Vin rosé", "Bière · Malt de bière", "Rhum · Vodka · Whisky · Cognac · Gin", "Champagne · Prosecco · Crémant · Cava", "Liqueur · Brandy · Calvados · Porto", "Saké · Vermouth · Absinthe · Pastis", "Cidre alcoolisé"],
   },
   {
-    emoji: "🩸",
-    title: "Sang",
-    items: [
-      "Sang (bœuf, porc, non spécifié)",
-      "Plasma sanguin, sérum sanguin",
-      "Blood, blood plasma, blood serum",
-      "Albumine de sang",
-    ],
+    emoji: "🩸", title: "Sang",
+    items: ["Sang (bœuf, porc, non spécifié)", "Plasma sanguin · Sérum sanguin", "Blood plasma · Blood serum", "Albumine de sang"],
   },
   {
-    emoji: "🦴",
-    title: "Gélatine non spécifiée",
-    items: [
-      "Gélatine (sans précision d'origine)",
-      "Gelatin, gelatine, gelatina",
-      "E441 — Gélatine",
-      "E542 — Phosphate d'os",
-    ],
+    emoji: "🦴", title: "Gélatine non précisée",
+    items: ["Gélatine (sans précision d'origine)", "Gelatin · Gelatine · Gelatina", "E441 — Gélatine", "E542 — Phosphate d'os"],
   },
 ];
 
-const WARNING_GROUPS: { title: string; emoji: string; items: string[] }[] = [
+const WARNING: { emoji: string; title: string; items: string[] }[] = [
   {
-    emoji: "⚗️",
-    title: "Émulsifiants (origine inconnue)",
-    items: [
-      "E471 — Mono et diglycérides d'acides gras",
-      "E472a-f — Esters d'acides gras",
-      "E473, E474, E475, E476, E477, E478, E479b",
-      "E422 — Glycérine / Glycérol",
-      "E570 — Acide stéarique / Stéarine",
-      "E470a, E470b — Sels d'acides gras",
-    ],
+    emoji: "⚗️", title: "Émulsifiants (origine inconnue)",
+    items: ["E471 — Mono et diglycérides d'acides gras", "E472a-f — Esters d'acides gras", "E473 · E474 · E475 · E476 · E477", "E422 — Glycérine / Glycérol", "E570 — Acide stéarique / Stéarine"],
   },
   {
-    emoji: "🧪",
-    title: "Additifs à vérifier",
-    items: [
-      "E920 — L-Cystéine (souvent d'origine animale)",
-      "E120 — Carmin / Cochenille (insecte)",
-      "E904 — Shellac / Laque de gomme (insecte)",
-      "E1518 — Triacétine (glycéryle triacétate)",
-    ],
+    emoji: "🧪", title: "Additifs à vérifier",
+    items: ["E920 — L-Cystéine (souvent d'origine animale)", "E120 — Carmin / Cochenille (insecte)", "E904 — Shellac / Laque de gomme (insecte)", "E1518 — Triacétine"],
   },
   {
-    emoji: "🧀",
-    title: "Enzymes & présure",
-    items: [
-      "Présure animale, rennet, rennin",
-      "Enzymes de coagulation",
-      "Chymosin (peut être d'origine animale)",
-    ],
+    emoji: "🧫", title: "Enzymes & présure",
+    items: ["Présure animale · Rennet · Rennin", "Enzymes de coagulation", "Chymosin (peut être d'origine animale)"],
   },
   {
-    emoji: "🌿",
-    title: "Arômes & dérivés animaux",
-    items: [
-      "Arômes naturels (source inconnue)",
-      "Gélatine bovine / beef gelatin (→ warning)",
-      "Gélatine de poisson (→ warning)",
-      "Collagène non spécifié",
-      "Lactosérum / whey, caséine / casein",
-      "Suif / tallow (graisse de bœuf)",
-    ],
+    emoji: "🥛", title: "Arômes & dérivés",
+    items: ["Arômes naturels (source inconnue)", "Gélatine bovine / beef gelatin → warning", "Gélatine de poisson → warning", "Lactosérum / Whey · Caséine / Casein", "Suif / Tallow (graisse de bœuf)"],
   },
 ];
 
-const SAFE_GROUPS: { title: string; emoji: string; items: string[] }[] = [
+const HALAL_OK: { emoji: string; title: string; items: string[] }[] = [
   {
-    emoji: "✅",
-    title: "Ingrédients toujours HALAL",
-    items: [
-      "Vinaigre (toutes formes) — alcool converti en acide acétique",
-      "Levure de bière — c'est une levure, pas de l'alcool",
-      "Gélatine végétale, gélatine de fruits",
-      "Agar-agar — gélifiant d'origine végétale",
-      "Extraits de plantes, épices naturelles",
-    ],
+    emoji: "✅", title: "Ingrédients toujours halal",
+    items: ["Vinaigre (toutes formes) — alcool converti en acide acétique", "Levure de bière — levure, pas de l'alcool", "Gélatine végétale · Gélatine de fruits", "Agar-agar — gélifiant végétal", "Extraits de plantes · Épices naturelles"],
   },
 ];
 
-function AccordionGroup({
-  emoji,
-  title,
-  items,
-  accentColor,
-}: {
-  emoji: string;
-  title: string;
-  items: string[];
-  accentColor: string;
-}) {
+function Group({ emoji, title, items, accent }: { emoji: string; title: string; items: string[]; accent: string }) {
   const [open, setOpen] = useState(false);
-
   return (
-    <View style={[styles.group, { borderLeftColor: accentColor }]}>
-      <TouchableOpacity
-        style={styles.groupHeader}
-        onPress={() => setOpen((v) => !v)}
-        activeOpacity={0.75}
+    <View style={[styles.group, { borderLeftColor: accent }]}>
+      <Pressable
+        onPress={() => setOpen(v => !v)}
+        android_ripple={{ color: "rgba(255,255,255,0.06)" }}
+        style={styles.groupHead}
       >
-        <Text style={styles.groupEmoji}>{emoji}</Text>
-        <Text style={[styles.groupTitle, { color: colors.foreground }]}>{title}</Text>
-        <View style={[styles.groupChevronWrap, { backgroundColor: accentColor + "20" }]}>
-          <Text style={[styles.groupChevron, { color: accentColor }]}>
-            {open ? "▲" : "▼"}
-          </Text>
+        <View style={[styles.groupEmojiWrap, { backgroundColor: accent + "15", borderColor: accent + "30" }]}>
+          <Text style={styles.groupEmoji}>{emoji}</Text>
         </View>
-      </TouchableOpacity>
-
+        <Text style={styles.groupTitle}>{title}</Text>
+        <View style={[styles.chevWrap, { backgroundColor: accent + "15" }]}>
+          <Text style={[styles.chev, { color: accent }]}>{open ? "▲" : "▼"}</Text>
+        </View>
+      </Pressable>
       {open && (
-        <View style={[styles.groupItems, { borderTopColor: accentColor + "25" }]}>
+        <View style={[styles.groupItems, { borderTopColor: accent + "20" }]}>
           {items.map((item, i) => (
             <View key={i} style={styles.itemRow}>
-              <View style={[styles.dot, { backgroundColor: accentColor }]} />
+              <View style={[styles.itemDot, { backgroundColor: accent }]} />
               <Text style={styles.itemText}>{item}</Text>
             </View>
           ))}
@@ -168,11 +89,11 @@ function AccordionGroup({
   );
 }
 
-function SectionHeader({ title, color }: { title: string; color: string }) {
+function SectionTitle({ label, color }: { label: string; color: string }) {
   return (
-    <View style={styles.sectionHeader}>
+    <View style={styles.sectionRow}>
       <View style={[styles.sectionLine, { backgroundColor: color }]} />
-      <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
+      <Text style={[styles.sectionLabel, { color }]}>{label}</Text>
       <View style={[styles.sectionLine, { backgroundColor: color }]} />
     </View>
   );
@@ -184,84 +105,81 @@ export default function SettingsScreen() {
   const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 24);
 
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
-      <LinearGradient colors={["#0C1510", "#050908"]} style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
+    <View style={[styles.root, { paddingTop: topPad }]}>
+      {/* Header */}
+      <LinearGradient colors={[C.surface, C.bg]} style={styles.header}>
+        <Pressable
+          style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1 }]}
+          onPress={() => router.back()}
+          android_ripple={{ color: "rgba(255,255,255,0.1)", borderless: false, radius: 20 }}
+        >
           <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
+        </Pressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Paramètres</Text>
-          <Text style={styles.headerSub}>Ingrédients surveillés</Text>
+          <Text style={styles.headerSub}>Ingrédients surveillés par l'algorithme</Text>
         </View>
-        <View style={{ width: 46 }} />
+        <View style={{ width: 44 }} />
       </LinearGradient>
 
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: botPad + 16 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* info card */}
-        <LinearGradient
-          colors={[colors.gold + "18", colors.gold + "08"]}
-          style={styles.infoCard}
-        >
-          <Text style={styles.infoIcon}>ℹ️</Text>
-          <Text style={styles.infoText}>
-            L'application analyse automatiquement les ingrédients de chaque produit scanné. Appuyez sur une catégorie pour voir la liste complète des termes surveillés.
-          </Text>
-        </LinearGradient>
-
-        {/* HARAM section */}
-        <SectionHeader title="INGRÉDIENTS INTERDITS" color={colors.haramRed} />
-        {HARAM_GROUPS.map((g) => (
-          <AccordionGroup key={g.title} emoji={g.emoji} title={g.title} items={g.items} accentColor={colors.haramRed} />
-        ))}
-
-        {/* WARNING section */}
-        <SectionHeader title="À VÉRIFIER" color={colors.warningAmber} />
-        {WARNING_GROUPS.map((g) => (
-          <AccordionGroup key={g.title} emoji={g.emoji} title={g.title} items={g.items} accentColor={colors.warningAmber} />
-        ))}
-
-        {/* SAFE section */}
-        <SectionHeader title="TOUJOURS AUTORISÉ" color={colors.halalGreen} />
-        {SAFE_GROUPS.map((g) => (
-          <AccordionGroup key={g.title} emoji={g.emoji} title={g.title} items={g.items} accentColor={colors.halalGreen} />
-        ))}
-
-        {/* note */}
-        <View style={styles.noteCard}>
-          <Text style={styles.noteTitle}>📌 Comment fonctionne l'analyse</Text>
-          <View style={styles.noteRows}>
-            <View style={styles.noteRow}>
-              <Text style={[styles.noteDot, { color: colors.haramRed }]}>●</Text>
-              <Text style={styles.noteText}>
-                <Text style={{ color: colors.haramRed, fontWeight: "700" }}>HARAM </Text>
-                — Un ingrédient interdit a été détecté avec certitude.
-              </Text>
-            </View>
-            <View style={styles.noteRow}>
-              <Text style={[styles.noteDot, { color: colors.warningAmber }]}>●</Text>
-              <Text style={styles.noteText}>
-                <Text style={{ color: colors.warningAmber, fontWeight: "700" }}>⚠️ VÉRIFIER </Text>
-                — Un ingrédient d'origine incertaine est présent. Contactez le fabricant.
-              </Text>
-            </View>
-            <View style={styles.noteRow}>
-              <Text style={[styles.noteDot, { color: colors.mutedForeground }]}>●</Text>
-              <Text style={styles.noteText}>
-                <Text style={{ color: colors.mutedForeground, fontWeight: "700" }}>❓ INCONNU </Text>
-                — Les ingrédients ne sont pas disponibles dans la base de données.
-              </Text>
-            </View>
-            <View style={styles.noteRow}>
-              <Text style={[styles.noteDot, { color: colors.gold }]}>●</Text>
-              <Text style={styles.noteText}>
-                <Text style={{ color: colors.gold, fontWeight: "700" }}>📡 HORS LIGNE </Text>
-                — Le scan sera analysé automatiquement dès le retour de la connexion.
-              </Text>
-            </View>
+        {/* Info card */}
+        <View style={styles.infoCard}>
+          <View style={[styles.infoIconWrap, { backgroundColor: C.gold + "18", borderColor: C.gold + "40" }]}>
+            <Text style={styles.infoIcon}>🔬</Text>
           </View>
+          <View style={styles.infoBody}>
+            <Text style={styles.infoTitle}>Comment ça fonctionne</Text>
+            <Text style={styles.infoText}>
+              L'algorithme analyse la liste d'ingrédients de chaque produit scanné et la compare à cette base de données.
+              Appuyez sur une catégorie pour voir les termes surveillés.
+            </Text>
+          </View>
+        </View>
+
+        {/* HARAM */}
+        <SectionTitle label="INGRÉDIENTS INTERDITS" color={C.haramLight} />
+        {HARAM.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.haramLight} />)}
+
+        {/* WARNING */}
+        <SectionTitle label="À VÉRIFIER" color={C.warningLight} />
+        {WARNING.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.warningLight} />)}
+
+        {/* HALAL */}
+        <SectionTitle label="TOUJOURS AUTORISÉ" color={C.halalLight} />
+        {HALAL_OK.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.halalLight} />)}
+
+        {/* Explanation card */}
+        <View style={styles.explainCard}>
+          <Text style={styles.explainTitle}>📌  Comprendre les résultats</Text>
+          <View style={styles.explainRows}>
+            {[
+              { color: C.halalLight,   dot: "●", bold: "HALAL", txt: "Aucun ingrédient interdit détecté. Produit conforme." },
+              { color: C.warningLight, dot: "●", bold: "À VÉRIFIER", txt: "Un ingrédient d'origine incertaine est présent. Contactez le fabricant." },
+              { color: C.haramLight,   dot: "●", bold: "NON HALAL", txt: "Un ingrédient interdit a été détecté avec certitude." },
+              { color: C.textSub,      dot: "●", bold: "INCONNU", txt: "Produit non trouvé ou ingrédients non disponibles." },
+              { color: C.gold,         dot: "●", bold: "HORS LIGNE", txt: "Analysé automatiquement au retour de la connexion." },
+            ].map((r, i) => (
+              <View key={i} style={styles.explainRow}>
+                <Text style={[styles.explainDot, { color: r.color }]}>{r.dot}</Text>
+                <Text style={styles.explainTxt}>
+                  <Text style={{ color: r.color, fontWeight: "700" }}>{r.bold}  </Text>
+                  {r.txt}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Source */}
+        <View style={styles.sourceCard}>
+          <Text style={styles.sourceTxt}>
+            🌐  Source des données : Open Food Facts{"\n"}
+            Base ouverte et collaborative · +2 000 000 produits
+          </Text>
         </View>
       </ScrollView>
     </View>
@@ -269,68 +187,80 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  root: { flex: 1, backgroundColor: C.bg },
 
   header: {
     flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 16, paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: colors.border, gap: 10,
+    paddingHorizontal: 14, paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 8,
   },
   backBtn: {
-    width: 46, height: 46, borderRadius: 14,
-    backgroundColor: colors.muted, alignItems: "center", justifyContent: "center",
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    alignItems: "center", justifyContent: "center",
   },
-  backIcon: { fontSize: 22, color: colors.foreground, fontWeight: "700" },
+  backIcon: { fontSize: 20, color: C.text, fontWeight: "700" },
   headerCenter: { flex: 1, alignItems: "center" },
-  headerTitle: { fontSize: 26, fontWeight: "900", color: colors.foreground },
-  headerSub: { fontSize: 13, color: colors.mutedForeground, marginTop: 2 },
+  headerTitle: { fontSize: 24, fontWeight: "900", color: C.text },
+  headerSub: { fontSize: 12, color: C.textMuted, marginTop: 2, textAlign: "center" },
 
-  content: { paddingHorizontal: 14, paddingTop: 16, gap: 10 },
+  content: { paddingHorizontal: 14, paddingTop: 16, gap: 8 },
 
   infoCard: {
-    flexDirection: "row", alignItems: "flex-start",
-    borderRadius: 16, padding: 16, gap: 12,
-    borderWidth: 1, borderColor: colors.gold + "30", marginBottom: 6,
+    flexDirection: "row", alignItems: "flex-start", gap: 12,
+    backgroundColor: C.surface, borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    padding: 16, marginBottom: 4,
+  },
+  infoIconWrap: {
+    width: 46, height: 46, borderRadius: 12, borderWidth: 1,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
   infoIcon: { fontSize: 22 },
-  infoText: { flex: 1, fontSize: 15, color: colors.foregroundDim, lineHeight: 22 },
+  infoBody: { flex: 1, gap: 4 },
+  infoTitle: { fontSize: 15, fontWeight: "800", color: C.text },
+  infoText: { fontSize: 13, color: C.textSub, lineHeight: 19 },
 
-  sectionHeader: {
-    flexDirection: "row", alignItems: "center",
-    gap: 10, marginTop: 8, marginBottom: 2,
-  },
-  sectionLine: { flex: 1, height: 1, opacity: 0.4 },
-  sectionTitle: { fontSize: 13, fontWeight: "900", letterSpacing: 2 },
+  sectionRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 6, marginBottom: 0 },
+  sectionLine: { flex: 1, height: StyleSheet.hairlineWidth * 2, opacity: 0.5 },
+  sectionLabel: { fontSize: 11, fontWeight: "900", letterSpacing: 2 },
 
   group: {
-    backgroundColor: colors.surface,
-    borderRadius: 14, borderLeftWidth: 4, overflow: "hidden",
+    backgroundColor: C.surface, borderRadius: 14, borderLeftWidth: 3.5, overflow: "hidden",
   },
-  groupHeader: {
-    flexDirection: "row", alignItems: "center",
-    padding: 15, gap: 12,
+  groupHead: { flexDirection: "row", alignItems: "center", padding: 14, gap: 10 },
+  groupEmojiWrap: {
+    width: 38, height: 38, borderRadius: 10, borderWidth: 1,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
   },
-  groupEmoji: { fontSize: 22 },
-  groupTitle: { flex: 1, fontSize: 16, fontWeight: "700", lineHeight: 22 },
-  groupChevronWrap: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  groupChevron: { fontSize: 11, fontWeight: "900" },
+  groupEmoji: { fontSize: 18 },
+  groupTitle: { flex: 1, fontSize: 15, fontWeight: "700", color: C.text, lineHeight: 20 },
+  chevWrap: { width: 26, height: 26, borderRadius: 7, alignItems: "center", justifyContent: "center" },
+  chev: { fontSize: 10, fontWeight: "900" },
 
   groupItems: {
-    borderTopWidth: 1,
-    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, gap: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14, paddingTop: 8, paddingBottom: 14, gap: 8,
   },
-  itemRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  dot: { width: 6, height: 6, borderRadius: 3, marginTop: 8, flexShrink: 0 },
-  itemText: { flex: 1, fontSize: 14, color: colors.foregroundDim, lineHeight: 22 },
+  itemRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  itemDot: { width: 5, height: 5, borderRadius: 3, marginTop: 8, flexShrink: 0 },
+  itemText: { flex: 1, fontSize: 13, color: C.textSub, lineHeight: 20 },
 
-  noteCard: {
-    backgroundColor: colors.surfaceElevated,
-    borderRadius: 16, padding: 18, gap: 12,
-    borderWidth: 1, borderColor: colors.border, marginTop: 6,
+  explainCard: {
+    backgroundColor: C.surface, borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    padding: 18, gap: 12, marginTop: 6,
   },
-  noteTitle: { fontSize: 16, fontWeight: "800", color: colors.foreground },
-  noteRows: { gap: 10 },
-  noteRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
-  noteDot: { fontSize: 16, lineHeight: 24 },
-  noteText: { flex: 1, fontSize: 14, color: colors.mutedForeground, lineHeight: 22 },
+  explainTitle: { fontSize: 15, fontWeight: "800", color: C.text },
+  explainRows: { gap: 9 },
+  explainRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  explainDot: { fontSize: 14, lineHeight: 22 },
+  explainTxt: { flex: 1, fontSize: 13, color: C.textSub, lineHeight: 20 },
+
+  sourceCard: {
+    borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    padding: 14, alignItems: "center",
+  },
+  sourceTxt: { fontSize: 12, color: C.textMuted, textAlign: "center", lineHeight: 18 },
 });

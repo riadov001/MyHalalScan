@@ -1,4 +1,4 @@
-import * as SQLite from "expo-sqlite";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type ScanResult = "halal" | "haram" | "warning" | "unknown";
 
@@ -19,129 +19,74 @@ export interface PendingScan {
   retryCount: number;
 }
 
-let _db: SQLite.SQLiteDatabase | null = null;
+const PRODUCTS_KEY = "@halalscan/products_v2";
+const PENDING_KEY = "@halalscan/pending_v2";
 
-async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (_db) return _db;
-  _db = await SQLite.openDatabaseAsync("halalscan_v2.db");
-  await _db.execAsync(`
-    PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS products (
-      barcode TEXT PRIMARY KEY,
-      result TEXT NOT NULL,
-      product_name TEXT NOT NULL,
-      timestamp INTEGER NOT NULL,
-      reason TEXT,
-      ingredients_text TEXT,
-      ingredients_list TEXT,
-      is_whitelisted INTEGER NOT NULL DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS pending_scans (
-      barcode TEXT PRIMARY KEY,
-      timestamp INTEGER NOT NULL,
-      retry_count INTEGER NOT NULL DEFAULT 0
-    );
-  `);
-  return _db;
+let _products: Record<string, Product> | null = null;
+let _pending: Record<string, PendingScan> | null = null;
+
+async function loadProducts(): Promise<Record<string, Product>> {
+  if (_products) return _products;
+  try {
+    const raw = await AsyncStorage.getItem(PRODUCTS_KEY);
+    _products = raw ? (JSON.parse(raw) as Record<string, Product>) : {};
+  } catch { _products = {}; }
+  return _products;
 }
 
-type ProductRow = {
-  barcode: string;
-  result: string;
-  product_name: string;
-  timestamp: number;
-  reason: string | null;
-  ingredients_text: string | null;
-  ingredients_list: string | null;
-  is_whitelisted: number;
-};
+async function saveProducts(): Promise<void> {
+  if (_products) await AsyncStorage.setItem(PRODUCTS_KEY, JSON.stringify(_products));
+}
 
-function rowToProduct(r: ProductRow): Product {
-  return {
-    barcode: r.barcode,
-    result: r.result as ScanResult,
-    productName: r.product_name,
-    timestamp: r.timestamp,
-    reason: r.reason ?? undefined,
-    ingredientsText: r.ingredients_text ?? undefined,
-    ingredientsList: r.ingredients_list ? (JSON.parse(r.ingredients_list) as string[]) : undefined,
-    isWhitelisted: r.is_whitelisted === 1,
-  };
+async function loadPending(): Promise<Record<string, PendingScan>> {
+  if (_pending) return _pending;
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_KEY);
+    _pending = raw ? (JSON.parse(raw) as Record<string, PendingScan>) : {};
+  } catch { _pending = {}; }
+  return _pending;
+}
+
+async function savePending(): Promise<void> {
+  if (_pending) await AsyncStorage.setItem(PENDING_KEY, JSON.stringify(_pending));
 }
 
 export const localDb = {
   async getAllProducts(): Promise<Product[]> {
-    const database = await getDb();
-    const rows = await database.getAllAsync<ProductRow>(
-      "SELECT * FROM products ORDER BY timestamp DESC"
-    );
-    return rows.map(rowToProduct);
+    const m = await loadProducts();
+    return Object.values(m).sort((a, b) => b.timestamp - a.timestamp);
   },
-
   async upsertProduct(p: Product): Promise<void> {
-    const database = await getDb();
-    await database.runAsync(
-      `INSERT OR REPLACE INTO products
-       (barcode, result, product_name, timestamp, reason, ingredients_text, ingredients_list, is_whitelisted)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        p.barcode,
-        p.result,
-        p.productName,
-        p.timestamp,
-        p.reason ?? null,
-        p.ingredientsText ?? null,
-        p.ingredientsList ? JSON.stringify(p.ingredientsList) : null,
-        p.isWhitelisted ? 1 : 0,
-      ]
-    );
+    const m = await loadProducts();
+    m[p.barcode] = p;
+    await saveProducts();
   },
-
   async whitelistProduct(barcode: string): Promise<void> {
-    const database = await getDb();
-    await database.runAsync(
-      "UPDATE products SET is_whitelisted = 1, result = 'halal' WHERE barcode = ?",
-      [barcode]
-    );
+    const m = await loadProducts();
+    if (m[barcode]) { m[barcode].isWhitelisted = true; m[barcode].result = "halal"; }
+    await saveProducts();
   },
-
   async clearAllProducts(): Promise<void> {
-    const database = await getDb();
-    await database.execAsync("DELETE FROM products");
+    _products = {};
+    await AsyncStorage.removeItem(PRODUCTS_KEY);
   },
-
   async addPending(barcode: string): Promise<void> {
-    const database = await getDb();
-    await database.runAsync(
-      "INSERT OR IGNORE INTO pending_scans (barcode, timestamp, retry_count) VALUES (?, ?, 0)",
-      [barcode, Date.now()]
-    );
+    const m = await loadPending();
+    if (!m[barcode]) m[barcode] = { barcode, timestamp: Date.now(), retryCount: 0 };
+    await savePending();
   },
-
   async getAllPending(): Promise<PendingScan[]> {
-    const database = await getDb();
-    const rows = await database.getAllAsync<{
-      barcode: string;
-      timestamp: number;
-      retry_count: number;
-    }>("SELECT * FROM pending_scans ORDER BY timestamp ASC");
-    return rows.map((r) => ({
-      barcode: r.barcode,
-      timestamp: r.timestamp,
-      retryCount: r.retry_count,
-    }));
+    const m = await loadPending();
+    return Object.values(m).sort((a, b) => a.timestamp - b.timestamp);
   },
-
   async removePending(barcode: string): Promise<void> {
-    const database = await getDb();
-    await database.runAsync("DELETE FROM pending_scans WHERE barcode = ?", [barcode]);
+    const m = await loadPending();
+    delete m[barcode];
+    await savePending();
   },
-
   async incrementPendingRetry(barcode: string): Promise<void> {
-    const database = await getDb();
-    await database.runAsync(
-      "UPDATE pending_scans SET retry_count = retry_count + 1 WHERE barcode = ?",
-      [barcode]
-    );
+    const m = await loadPending();
+    if (m[barcode]) m[barcode].retryCount++;
+    await savePending();
   },
 };

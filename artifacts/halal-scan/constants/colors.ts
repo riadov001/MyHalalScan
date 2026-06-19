@@ -1,34 +1,59 @@
-const colors = {
-  background: "#050908",
-  surface: "#0C1510",
-  surfaceElevated: "#121F18",
+const C = {
+  // ── Backgrounds ──────────────────────────────────────────────────────────
+  bg: "#060D09",
+  surface: "#0C1912",
+  surfaceHigh: "#132218",
+  glass: "rgba(10,22,14,0.92)",
 
-  gold: "#D4A847",
-  goldLight: "#E8C870",
-  goldDim: "rgba(212,168,71,0.18)",
+  // ── Gold (primary brand) ─────────────────────────────────────────────────
+  gold: "#C8963C",
+  goldLight: "#DFB870",
+  goldDark: "#8A6520",
+  goldGlow: "rgba(200,150,60,0.22)",
 
-  halalGreen: "#1DB163",
-  halalGreenBg: "#051A0D",
-  haramRed: "#E53935",
-  haramRedBg: "#1A0505",
-  warningAmber: "#F0A500",
-  warningAmberBg: "#180E00",
+  // ── Results ──────────────────────────────────────────────────────────────
+  halal: "#1AAF5A",
+  halalLight: "#22CC6A",
+  halalBg: "#031209",
+  haram: "#DC3545",
+  haramLight: "#F04055",
+  haramBg: "#140304",
+  warning: "#E8921A",
+  warningLight: "#F5A83A",
+  warningBg: "#110800",
+  unknown: "#6B8577",
+  unknownBg: "#080E0A",
 
-  foreground: "#FFFFFF",
-  foregroundDim: "#B0BDB5",
-  mutedForeground: "#677A70",
+  // ── Text ─────────────────────────────────────────────────────────────────
+  text: "#EEF4F0",
+  textSub: "#9AB5A5",
+  textMuted: "#567060",
 
-  border: "#1A2B22",
-  card: "#0C1510",
-  muted: "#141F19",
+  // ── UI chrome ────────────────────────────────────────────────────────────
+  border: "#192C20",
+  borderHigh: "#223828",
 
-  scannerButton: "#D4A847",
-  scannerButtonText: "#050908",
+  // ── Aliases for old references ───────────────────────────────────────────
+  background: "#060D09",
+  foreground: "#EEF4F0",
+  foregroundDim: "#9AB5A5",
+  mutedForeground: "#567060",
+  card: "#0C1912",
+  muted: "#111D16",
+  halalGreen: "#1AAF5A",
+  haramRed: "#DC3545",
+  warningAmber: "#E8921A",
+  goldDim: "rgba(200,150,60,0.15)",
+  scannerButton: "#C8963C",
+  scannerButtonText: "#060D09",
+  primary: "#C8963C",
+  primaryForeground: "#060D09",
+  surfaceElevated: "#132218",
+  halalGreenBg: "#031209",
+  haramRedBg: "#140304",
+  warningAmberBg: "#110800",
 
-  radius: 18,
-
-  primary: "#D4A847",
-  primaryForeground: "#050908",
+  radius: 16,
 };
 
-export default colors;
+export default C;
