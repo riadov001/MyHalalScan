@@ -359,7 +359,11 @@ export default function ScannerScreen() {
       <View style={styles.overlay} pointerEvents="box-none">
         {/* header */}
         <View style={[styles.header, { paddingTop: topPad }]}>
-          <Text style={styles.appTitle}>🌙 HalalScan</Text>
+          <Text style={styles.appArabic}>حلال</Text>
+          <Text style={styles.appTitle}>
+            <Text style={styles.appTitleHalal}>Halal</Text>
+            <Text style={styles.appTitleScan}>Scan</Text>
+          </Text>
           <Text style={styles.appSubtitle}>
             {isScanning ? "Pointez vers un code-barres" : "Appuyez sur SCANNER"}
           </Text>
@@ -464,11 +468,28 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.55)",
     position: "relative",
   },
+  appArabic: {
+    fontSize: 28,
+    color: colors.halalGreen,
+    textAlign: "center",
+    lineHeight: 34,
+  },
   appTitle: {
-    fontSize: 34,
+    fontSize: 30,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
+  appTitleHalal: {
+    fontSize: 30,
+    fontWeight: "900",
+    color: colors.halalGreen,
+    letterSpacing: 1.5,
+  },
+  appTitleScan: {
+    fontSize: 30,
     fontWeight: "900",
     color: colors.scannerButton,
-    letterSpacing: 2,
+    letterSpacing: 1.5,
   },
   appSubtitle: {
     fontSize: 17,

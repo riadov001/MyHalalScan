@@ -7,12 +7,12 @@
     "icon": "./assets/images/icon.png",
     "scheme": "halal-scan",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0D0D0D",
+    "backgroundColor": "#0A0F0C",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0D0D0D"
+      "backgroundColor": "#0A0F0C"
     },
     "ios": {
       "supportsTablet": false,

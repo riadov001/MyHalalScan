@@ -77,7 +77,7 @@ export default function ResultOverlay({
   const dismissed = useRef(false);
 
   const textColor =
-    result === "warning" || result === "unknown" ? "#1A1A00" : "#FFFFFF";
+    result === "warning" || result === "unknown" ? "#1A0F00" : "#FFFFFF";
 
   // ── entrance animation ───────────────────────────────────────────────────────
   const opacity = useSharedValue(0);

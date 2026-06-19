@@ -1,32 +1,32 @@
 const colors = {
-  background: "#0D0D0D",
+  background: "#0A0F0C",
   foreground: "#FFFFFF",
   foregroundDim: "#AAAAAA",
 
-  halalGreen: "#00C853",
-  halalGreenDark: "#005C24",
+  halalGreen: "#1B8A52",
+  halalGreenDark: "#0A3320",
   haramRed: "#D50000",
   haramRedDark: "#5C0000",
-  warningYellow: "#FFD600",
-  warningYellowDark: "#5C4D00",
+  warningYellow: "#E0A020",
+  warningYellowDark: "#5C3E00",
 
-  scannerButton: "#FFD600",
-  scannerButtonText: "#0D0D0D",
+  scannerButton: "#C8922A",
+  scannerButtonText: "#FFFFFF",
 
-  card: "#1A1A1A",
+  card: "#111A13",
   cardForeground: "#FFFFFF",
-  muted: "#2A2A2A",
-  mutedForeground: "#888888",
-  border: "#333333",
+  muted: "#1A2B1E",
+  mutedForeground: "#8A9E90",
+  border: "#243828",
 
   destructive: "#D50000",
   destructiveForeground: "#FFFFFF",
 
-  primary: "#FFD600",
-  primaryForeground: "#0D0D0D",
+  primary: "#C8922A",
+  primaryForeground: "#FFFFFF",
 
   text: "#FFFFFF",
-  tint: "#FFD600",
+  tint: "#C8922A",
 
   radius: 20,
 };
