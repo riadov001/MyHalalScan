@@ -58,8 +58,6 @@ export default function HomeScreen() {
   const loadingRef = useRef(false);
   const scanningRef = useRef(false);
 
-  const isModernScannerAvailable = Platform.OS !== "web" && CameraView.isModernBarcodeScannerAvailable;
-
   const {
     addProduct, queueOfflineScan, whitelistProduct,
     getProduct, isWhitelisted, isOnline, pendingBarcodes,
@@ -221,48 +219,20 @@ export default function HomeScreen() {
     setScanResult(p => p ? { ...p, result: "halal" } : null);
   }, [scanResult, whitelistProduct]);
 
-  // ── Modern barcode scanner (Google Code Scanner / DataScannerViewController) ──
-  useEffect(() => {
-    if (!isModernScannerAvailable) return;
-    const sub = CameraView.onModernBarcodeScanned(({ data }) => {
-      if (!data) return;
-      cooldown.current = false;
-      lastBarcode.current = null;
-      processBarcode(data);
-    });
-    return () => sub.remove();
-  }, [isModernScannerAvailable, processBarcode]);
-
-  const toggleScan = useCallback(async () => {
+  const toggleScan = useCallback(() => {
     if (loading) return;
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     btnScale.value = withSequence(
       withTiming(0.96, { duration: 75 }),
       withSpring(1, { damping: 14 }),
     );
-
-    if (isModernScannerAvailable) {
-      cooldown.current = false;
-      lastBarcode.current = null;
-      setScanning(true);
-      scanningRef.current = true;
-      try {
-        await CameraView.launchScanner({
-          barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"],
-        });
-      } finally {
-        setScanning(false);
-        scanningRef.current = false;
-      }
-    } else {
-      setScanning(v => {
-        const next = !v;
-        scanningRef.current = next;
-        if (!next) { lastBarcode.current = null; cooldown.current = false; }
-        return next;
-      });
-    }
-  }, [loading, isModernScannerAvailable]);
+    setScanning(v => {
+      const next = !v;
+      scanningRef.current = next;
+      if (!next) { lastBarcode.current = null; cooldown.current = false; }
+      return next;
+    });
+  }, [loading]);
 
   // ── Permission screens ─────────────────────────────────────────────────────
   if (!permission) {
@@ -436,9 +406,7 @@ export default function HomeScreen() {
                 >
                   <Text style={styles.mainBtnIcon}>{scanning ? "⏹" : "📷"}</Text>
                   <Text style={styles.mainBtnTxt}>
-                    {scanning
-                      ? (isModernScannerAvailable ? "SCAN EN COURS…" : "ARRÊTER LE SCAN")
-                      : "SCANNER UN PRODUIT"}
+                    {scanning ? "ARRÊTER LE SCAN" : "SCANNER UN PRODUIT"}
                   </Text>
                 </LinearGradient>
               </Pressable>
