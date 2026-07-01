@@ -232,7 +232,10 @@ export default function HomeScreen() {
   }, [processBarcode]);
 
   const dismiss = useCallback(() => {
-    setScanResult(null); lastBarcode.current = null; cooldown.current = false;
+    setScanResult(null);
+    lastBarcode.current = null;
+    cooldown.current = false;
+    autoStartedRef.current = false; // allow auto-start to re-trigger
   }, []);
 
   const handleManualSubmit = useCallback(() => {
