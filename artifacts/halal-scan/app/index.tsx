@@ -203,16 +203,7 @@ export default function HomeScreen() {
 
       let barcodeData: string | null = null;
 
-      if (Platform.OS === "web") {
-        try {
-          const { BrowserMultiFormatReader } = await import("@zxing/browser");
-          const reader = new BrowserMultiFormatReader();
-          const result = await reader.decodeFromImageUrl(uri);
-          barcodeData = result.getText();
-        } catch {
-          barcodeData = null;
-        }
-      } else {
+      if (Platform.OS !== "web") {
         const codes = await Camera.scanFromURLAsync(uri, [
           "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
         ]);
