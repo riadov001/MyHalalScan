@@ -62,6 +62,7 @@ export default function HomeScreen() {
   const cooldown = useRef(false);
   const loadingRef = useRef(false);
   const scanningRef = useRef(false);
+  const autoStartedRef = useRef(false);
 
   const {
     addProduct, queueOfflineScan, whitelistProduct,
@@ -87,6 +88,15 @@ export default function HomeScreen() {
       -1,
     );
   }, []);
+
+  // Auto-start scanning as soon as camera permission is confirmed
+  useEffect(() => {
+    if (permission?.granted && !autoStartedRef.current && !scanResult) {
+      autoStartedRef.current = true;
+      scanningRef.current = true;
+      setScanning(true);
+    }
+  }, [permission?.granted, scanResult]);
 
   useEffect(() => {
     if (scanning) {
@@ -180,38 +190,53 @@ export default function HomeScreen() {
   const pickFromGallery = useCallback(async () => {
     if (loadingRef.current) return;
     try {
-      const res = await ImagePicker.launchImageLibraryAsync({
+      const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         quality: 1,
         allowsEditing: false,
       });
-      if (res.canceled || !res.assets?.[0]) return;
-      const uri = res.assets[0].uri;
+      if (picked.canceled || !picked.assets?.[0]) return;
+      const uri = picked.assets[0].uri;
 
       loadingRef.current = true;
       setLoading(true);
 
-      const codes = await Camera.scanFromURLAsync(uri, [
-        "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
-      ]);
+      let barcodeData: string | null = null;
+
+      if (Platform.OS === "web") {
+        try {
+          const { BrowserMultiFormatReader } = await import("@zxing/browser");
+          const reader = new BrowserMultiFormatReader();
+          const result = await reader.decodeFromImageUrl(uri);
+          barcodeData = result.getText();
+        } catch {
+          barcodeData = null;
+        }
+      } else {
+        const codes = await Camera.scanFromURLAsync(uri, [
+          "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
+        ]);
+        barcodeData = codes.length > 0 && codes[0].data ? codes[0].data : null;
+      }
+
       loadingRef.current = false;
       setLoading(false);
 
-      if (codes.length > 0 && codes[0].data) {
+      if (barcodeData) {
         cooldown.current = false;
         lastBarcode.current = null;
-        processBarcode(codes[0].data);
+        processBarcode(barcodeData);
       } else {
         Alert.alert(
           "Aucun code-barres trouvé",
-          "La photo ne contient pas de code-barres lisible. Essayez de prendre une photo plus nette, de face et bien éclairée.",
-          [{ text: "OK", style: "default" }],
+          "La photo ne contient pas de code-barres lisible.\n\nConseils :\n• Photo nette et bien éclairée\n• Code-barres entier visible\n• Évitez les reflets",
+          [{ text: "OK" }],
         );
       }
     } catch {
       loadingRef.current = false;
       setLoading(false);
-      Alert.alert("Erreur", "Impossible d'analyser cette image. Réessayez avec une photo plus nette.");
+      Alert.alert("Erreur galerie", "Impossible de lire cette image.");
     }
   }, [processBarcode]);
 
