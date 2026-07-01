@@ -57,6 +57,7 @@ export default function HomeScreen() {
   const [torch, setTorch] = useState(false);
   const [scanResult, setScanResult] = useState<ScanState | null>(null);
   const [manualCode, setManualCode] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const lastBarcode = useRef<string | null>(null);
   const cooldown = useRef(false);
@@ -185,10 +186,22 @@ export default function HomeScreen() {
     processBarcode(data);
   }, [processBarcode]);
 
-
   // ── Gallery picker ────────────────────────────────────────────────────────
   const pickFromGallery = useCallback(async () => {
     if (loadingRef.current) return;
+
+    // iOS: Camera.scanFromURLAsync only supports QR codes — EAN-13/8 will never work
+    if (Platform.OS === "ios") {
+      Alert.alert(
+        "Galerie non disponible sur iPhone",
+        "La détection de codes-barres EAN depuis la galerie n'est pas prise en charge sur iOS (limitation système Apple).\n\nUtilisez le scanner caméra ou saisissez le code manuellement.",
+        [{ text: "OK" }],
+      );
+      return;
+    }
+
+    if (Platform.OS === "web") return;
+
     try {
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
@@ -196,19 +209,19 @@ export default function HomeScreen() {
         allowsEditing: false,
       });
       if (picked.canceled || !picked.assets?.[0]) return;
-      const uri = picked.assets[0].uri;
+      const rawUri = picked.assets[0].uri;
 
       loadingRef.current = true;
       setLoading(true);
 
-      let barcodeData: string | null = null;
+      // Android: ensure file:// prefix for scanFromURLAsync
+      const uri = rawUri.startsWith("file://") ? rawUri : `file://${rawUri}`;
 
-      if (Platform.OS !== "web") {
-        const codes = await Camera.scanFromURLAsync(uri, [
-          "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
-        ]);
-        barcodeData = codes.length > 0 && codes[0].data ? codes[0].data : null;
-      }
+      let barcodeData: string | null = null;
+      const codes = await Camera.scanFromURLAsync(uri, [
+        "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
+      ]);
+      barcodeData = codes.length > 0 && codes[0].data ? codes[0].data : null;
 
       loadingRef.current = false;
       setLoading(false);
@@ -220,7 +233,7 @@ export default function HomeScreen() {
       } else {
         Alert.alert(
           "Aucun code-barres trouvé",
-          "La photo ne contient pas de code-barres lisible.\n\nConseils :\n• Photo nette et bien éclairée\n• Code-barres entier visible\n• Évitez les reflets",
+          "La photo ne contient pas de code-barres lisible.\n\nConseils :\n• Photo nette et bien éclairée\n• Le code-barres doit occuper la majeure partie de l'image\n• Évitez les reflets",
           [{ text: "OK" }],
         );
       }
@@ -323,10 +336,9 @@ export default function HomeScreen() {
             <Text style={styles.brandSub}>حلال · Vérification alimentaire</Text>
           </View>
         </View>
-        <View style={styles.headerBtns}>
-          <NavBtn emoji="⚙️" onPress={() => router.push("/settings")} />
-          <NavBtn emoji="📋" onPress={() => router.push("/history")} badge={histCount} />
-        </View>
+        <Pressable onPress={() => setMenuOpen(true)} hitSlop={12} style={styles.hamburgerBtn}>
+          <Text style={styles.hamburgerIcon}>☰</Text>
+        </Pressable>
       </View>
 
       {/* ── CAMERA AREA (flex: 1) ── */}
@@ -524,6 +536,34 @@ export default function HomeScreen() {
           isWhitelisted={isWhitelisted(scanResult.barcode)}
         />
       )}
+
+      {/* Menu overlay */}
+      {menuOpen && (
+        <View style={StyleSheet.absoluteFill}>
+          <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
+          <View style={[styles.menuPanel, { top: topPad + 6, right: 10 }]}>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); router.push("/settings"); }}
+            >
+              <Text style={styles.menuEmoji}>⚙️</Text>
+              <Text style={styles.menuTxt}>Paramètres</Text>
+            </Pressable>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); router.push("/history"); }}
+            >
+              <Text style={styles.menuEmoji}>📋</Text>
+              <Text style={styles.menuTxt}>Historique</Text>
+              {histCount > 0 && (
+                <View style={styles.menuBadge}>
+                  <Text style={styles.menuBadgeTxt}>{histCount > 99 ? "99+" : histCount}</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -591,6 +631,40 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
   },
   navBadgeTxt: { fontSize: 9, fontWeight: "900", color: "#FFF" },
+
+  // hamburger menu
+  hamburgerBtn: {
+    width: 46, height: 46, borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.13)",
+    alignItems: "center", justifyContent: "center",
+  },
+  hamburgerIcon: { fontSize: 22, color: C.gold, fontWeight: "700" },
+  menuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "transparent" } as object,
+  menuPanel: {
+    position: "absolute",
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    paddingVertical: 8,
+    minWidth: 200,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45, shadowRadius: 24,
+    elevation: 16,
+  },
+  menuItem: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingVertical: 12, paddingHorizontal: 16,
+  },
+  menuEmoji: { fontSize: 20 },
+  menuTxt: { fontSize: 15, fontWeight: "700", color: C.textSub },
+  menuBadge: {
+    backgroundColor: C.haram, borderRadius: 8,
+    minWidth: 17, height: 17,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
+    marginLeft: "auto",
+  },
+  menuBadgeTxt: { fontSize: 9, fontWeight: "900", color: "#FFF" },
 
   // camera area
   cameraArea: {

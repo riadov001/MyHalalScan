@@ -1,17 +1,17 @@
 ---
 name: HalalScan Barcode Scanner API
-description: Camera scanning, web ZXing fallback, and EAS build workaround for expo-camera 17
+description: Camera scanning, gallery limitations, and expo-camera 17 usage patterns
 ---
 
 ## expo-camera 17 scanning
 
-- `onBarcodeScanned` is the correct prop (NOT `onModernBarcodeScanned` — doesn't exist in v17 types)
-- `Camera.scanFromURLAsync(uri, types)` — static native-only; works iOS/Android, NOT on web
-- `useCameraPermissions()` returns `[permission, requestPermission]`
+**Active approach used:** `onBarcodeScanned` prop on `CameraView` — the passive scanner callback. This is the current implementation.
 
-**Why `onBarcodeScanned` only:** The `launchScanner`/`onModernBarcodeScanned` API from earlier memory is for older SDK versions. In expo-camera 17 (SDK 54), use `onBarcodeScanned` prop directly on `CameraView`.
+`useCameraPermissions()` returns `[permission, requestPermission]`.
 
-**Auto-start scanning:** Camera only processes barcodes when `scanningRef.current = true`. Add auto-start useEffect:
+**Why passive scanner only:** The user confirmed the passive `onBarcodeScanned` approach was working reliably before. A modern scanner experiment (using `CameraView.launchScanner` + `onModernBarcodeScanned`) was attempted but reverted at user request because it changed the UX (system modal overlay replacing the in-app camera preview) without clear benefit.
+
+**Auto-start scanning:** Camera only processes barcodes when `scanningRef.current = true`. The auto-start effect:
 ```ts
 useEffect(() => {
   if (permission?.granted && !autoStartedRef.current && !scanResult) {
@@ -22,9 +22,23 @@ useEffect(() => {
 }, [permission?.granted, scanResult]);
 ```
 
-## Web gallery scan — ZXing
+**Auto-restart after dismiss:** `dismiss()` sets `autoStartedRef.current = false`, allowing the auto-start effect to re-trigger when `scanResult` goes null.
 
-`Camera.scanFromURLAsync` is native-only. Web fix: use `@zxing/browser` with dynamic import:
+## Gallery scan platform limitations
+
+- **iOS**: `Camera.scanFromURLAsync` only supports QR codes — EAN-13/8 will never work. Show an explicit Alert instead of silently failing, directing users to camera scan or manual entry.
+- **Android**: `Camera.scanFromURLAsync` works for EAN barcodes; ensure `file://` URI prefix (`uri.startsWith("file://") ? uri : \`file://\${uri\}\``) before the call. Include `["ean13","ean8","upc_a","upc_e","code128","code39","qr"]` in barcodeTypes.
+- **Web**: Not supported; guarded by `Platform.OS !== "web"`.
+
+## react-native version
+
+Expo SDK 54 ships with `react-native 0.81.5`. The `package.json` declares `0.81.5` (exact pin). Do NOT change this version manually — doing so corrupts pnpm's content-addressable store and causes Metro to fail with `Cannot find module 'metro-runtime/package.json'`.
+
+**How to fix if corrupted:** `git checkout <original-commit> -- pnpm-lock.yaml && rm -rf node_modules/.pnpm/expo@* artifacts/halal-scan/.expo && pnpm install`.
+
+## Web gallery scan — ZXing (not currently used)
+
+`Camera.scanFromURLAsync` is native-only. If web gallery scan is ever needed:
 ```ts
 if (Platform.OS === "web") {
   const { BrowserMultiFormatReader } = await import("@zxing/browser");
@@ -33,7 +47,6 @@ if (Platform.OS === "web") {
   barcodeData = result.getText();
 }
 ```
-
 **Version**: `@zxing/browser@0.2.0` requires `@zxing/library@0.22.0` (NOT 0.23.x — peer dep mismatch).
 
 ## EAS Build in Replit (git lock workaround)
