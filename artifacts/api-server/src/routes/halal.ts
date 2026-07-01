@@ -18,7 +18,7 @@ const HARAM_INGREDIENTS: string[] = [
   // ── pork (EN) ──
   "pork", "pig", "swine", "ham", "pork lard", "fatback", "pork belly",
   "pork rind", "crackling", "pepperoni", "pork gelatin", "pork collagen",
-  "pork fat", "pork skin",
+  "pork fat", "pork skin", "lard", "pork rinds",
   // ── pork (DE) ──
   "schwein", "schweinefleisch", "speck", "schinken", "schweineschmalz",
   "schweinebauch", "schweinefett", "schmalz",
@@ -28,41 +28,44 @@ const HARAM_INGREDIENTS: string[] = [
   "cerdo", "carne de cerdo", "grasa de cerdo", "jamon", "tocino",
   "chicharron", "chorizo", "morcilla", "manteca de cerdo",
   // ── pork (NL) ──
-  "varken", "varkensvlees", "varkensspek", "varkensvet", "spek",
+  "varken", "varkensvlees", "varkensspek", "varkensvet",
   // ── pork (PL) ──
   "wieprzowina", "slonina", "szynka wieprzowa",
   // ── pork (PT) ──
   "porco", "toucinho", "linguica", "chourico",
-  // ── alcohol (FR) ──
+  // ── pork (AR transliteration) ──
+  "khinzir", "lahm khinzir",
+  // ── alcohol — FR (standalone + compounds) ──
+  "alcool",           // standalone — catch-all for ANY alcohol listing
   "alcool ethylique", "ethanol",
   "alcool de grain", "alcool de vin", "alcool modifie",
+  "vin",              // standalone wine
   "vin blanc", "vin rouge", "vin rose", "vin de cuisine",
   "biere", "malt de biere", "biere d orge",
   "rhum", "vodka", "whisky", "whiskey", "cognac", "brandy", "liqueur",
   "gin", "champagne", "cremant", "prosecco", "cava", "porto",
   "vermouth", "sake", "cidre alcoolise", "calvados", "armagnac",
   "kirsch", "schnapps", "absinthe", "pastis",
-  "anisette", "amaretto",
+  "anisette", "amaretto", "schnaps",
   // ── alcohol (EN) ──
   "alcohol", "ethyl alcohol", "rum", "bourbon", "mead",
   "hard cider", "spirits", "wine spirits", "beer extract",
+  "wine", "beer", "cider",
   // ── alcohol (DE) ──
-  "alkohol", "wein", "weinbrand",
+  "alkohol", "wein", "weinbrand", "bier",
   // ── alcohol (IT) ──
   "alcol", "vino", "birra", "grappa",
   // ── alcohol (ES) ──
-  "aguardiente",
+  "aguardiente", "vino", "cerveza",
   // ── blood (FR/EN/DE) ──
-  "sang de boeuf", "sang de porc", "plasma sanguin",
+  "sang de boeuf", "sang de porc", "sang", "plasma sanguin",
   "serum sanguin", "blood plasma", "blood serum", "albumine de sang",
   "blutplasma", "blut",
-  // ── gelatin — unspecified (high risk: source unknown) ──
-  // NOTE: "gelatine" alone is intentionally NOT here.
-  // We only flag it when it has no safe qualifier (see masking step below).
+  // ── gelatin — pork/unspecified ──
   "gelatine de porc", "pork gelatin", "gelatine porcine",
   // ── haram e-numbers ──
   "e441",   // gelatin (pork/bovine, unspecified)
-  "e542",   // bone phosphate
+  "e542",   // bone phosphate (from animal bone)
 ];
 
 // These are the haram terms that include "gelatine" / "gelatin" without a safe qualifier.
@@ -97,20 +100,24 @@ const WARNING_INGREDIENTS: string[] = [
   "e120", "carmin", "carmine", "cochenille",
   "rouge cochenille", "acide carminique", "carminic acid",
   "e904", "shellac", "laque de gomme",
+  // ── nucleotides (may be from meat/yeast) ──
+  "e627", "disodium guanylate", "guanylate disodique",
+  "e631", "disodium inosinate", "inosinate disodique",
+  "e635", "disodium ribonucleotides", "ribonucleotides disodiques",
   // ── natural flavors (source unknown) ──
   "aromes naturels", "arome naturel", "natural flavors",
   "natural flavour", "naturliche aromen",
   "aroma naturale", "aromas naturales",
-  // ── gelatin from bovine / unspecified source ──
-  // NOTE: added by masking step result, not checked directly here
   // ── collagen (non-pork) ──
   "collagene", "collagen", "peptides de collagene",
-  // ── whey / casein ──
+  // ── whey / casein (animal origin, may contain rennet) ──
   "lactoserum", "whey", "caseine", "casein",
   // ── tallow / suif ──
-  "suif", "tallow", "beef tallow",
+  "suif", "tallow", "beef tallow", "graisse animale",
   // ── malt extract (non-alcoholic food use, but source of debate) ──
   "extrait de malt",
+  // ── carmine variants ──
+  "e124", // Ponceau 4R - sometimes from carmine
 ];
 
 const HARAM_CATEGORIES: string[] = [
@@ -119,9 +126,9 @@ const HARAM_CATEGORIES: string[] = [
   "en:champagnes", "en:sparkling-wines", "en:red-wines", "en:white-wines",
   "en:rose-wines", "en:whiskies", "en:vodkas", "en:rums", "en:gins",
   "en:brandies", "en:liqueurs", "en:aperitifs", "en:sake",
-  "en:bourbons", "en:meads", "en:malt-beverages",
+  "en:bourbons", "en:meads", "en:malt-beverages", "en:cocktails",
   "fr:bieres", "fr:biere", "fr:vins", "fr:alcools",
-  "fr:spiritueux", "fr:cidres-alcoolises",
+  "fr:spiritueux", "fr:cidres-alcoolises", "fr:cocktails",
   "en:pork", "en:pork-products", "en:pork-meats",
   "fr:porc", "fr:charcuteries", "fr:saucissons",
 ];
@@ -135,6 +142,7 @@ const HALAL_LABELS: string[] = [
   "halal", "en:halal", "sans porc", "no pork",
   "certifie halal", "certified halal", "halal certified",
   "halal certified by", "fr:halal",
+  "fr:certifie-halal", "en:halal-certified",
 ];
 
 const HARAM_NAME_KEYWORDS: string[] = [
@@ -172,23 +180,29 @@ const OFF_FIELDS = [
   "categories_tags",
   "nutriments",
   "allergens_tags",
+  "brands",
+  "quantity",
 ].join(",");
 
-// Country-specific OpenFoodFacts mirrors to try as fallbacks
+// Country-specific OpenFoodFacts mirrors — tried in parallel for maximum coverage
 const OFF_COUNTRY_MIRRORS = [
-  "fr", "de", "it", "es", "be", "uk", "nl", "at", "ch",
+  "fr", "de", "it", "es", "be", "uk", "nl", "at", "ch", "us", "ma", "dz", "tn",
 ];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 function normalise(text: string): string {
-  return text
+  let s = text
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  // Compact E-code notation: "e 471" or "e  471" → "e471"
+  // This ensures "E 471" in ingredient lists matches "e471" in our check lists
+  s = s.replace(/\be\s+(\d+[a-z]?)\b/g, "e$1");
+  return s;
 }
 
 /** Word-boundary aware containment check */
@@ -308,14 +322,16 @@ function maskSafeCompounds(normText: string): MaskResult {
     t.split(phrase).join(" __SAFE__ ");
 
   // ── Vinegar (all forms) — alcohol fully converted to acetic acid → halal ──
+  // NOTE: must be masked BEFORE bare "vin", "alcool", "biere" checks
   const vinegarPhrases = [
     "vinaigre de vin blanc", "vinaigre de vin rouge", "vinaigre de vin",
     "vinaigre balsamique", "vinaigre de cidre", "vinaigre de biere",
     "vinaigre de malt", "vinaigre de riz", "vinaigre de fruits",
-    "vinaigre d alcool", "vinaigre blanc",
+    "vinaigre d alcool", "vinaigre blanc", "vinaigre",
     "vinegar", "aceto balsamico", "aceto di vino",
     "wine vinegar", "cider vinegar", "balsamic vinegar",
     "apfelessig", "weinessig", "weissweinessig", "rotweinessig",
+    "apple cider vinegar",
   ];
   for (const p of vinegarPhrases) text = replaceAll(text, p);
 
@@ -323,7 +339,8 @@ function maskSafeCompounds(normText: string): MaskResult {
   const brewersYeast = [
     "levure de biere", "levures de biere", "extrait de levure de biere",
     "hefeextrakt", "bierhefe", "brewer s yeast", "brewers yeast",
-    "lievito di birra",
+    "lievito di birra", "levure boulangere", "levure seche",
+    "dried yeast", "yeast extract",
   ];
   for (const p of brewersYeast) text = replaceAll(text, p);
 
@@ -360,13 +377,22 @@ function maskSafeCompounds(normText: string): MaskResult {
   // ── Malt used as flour/starch (non-alcoholic food use) ──
   const malt = [
     "farine de malt", "amidon de malt", "farine d orge maltee",
-    "extrait de malt d orge", "germe de malt",
+    "extrait de malt d orge", "germe de malt", "malt d orge",
   ];
   for (const p of malt) text = replaceAll(text, p);
 
-  // ── Wine derivatives safe to ignore because "vin" is part of another safe word ──
-  // "vinaigre" is already handled above; also handle "vino" in "vino cotto"
-  // when already processed.
+  // ── Alcohol-derived acids that are fully transformed (halal) ──
+  const safeAcids = [
+    "acide acetique", "acetic acid", // fermentation product
+    "acide lactique", "lactic acid",
+    "acide citrique", "citric acid",
+  ];
+  for (const p of safeAcids) text = replaceAll(text, p);
+
+  // ── Vanilla / rum flavouring (non-alcoholic extracts used as aroma) ──
+  // These are listed in France as "arôme naturel de vanille" or "arôme rhum"
+  // They are already caught by the WARNING_INGREDIENTS "aromes naturels" check
+  // so we do NOT mask them here — we want the warning to fire.
 
   return { maskedText: text, bovineGelatin, fishGelatin };
 }
@@ -580,56 +606,143 @@ function hasUsableIngredients(product: Record<string, unknown>): boolean {
   return false;
 }
 
+/** Score a product by richness of ingredient data (higher = better) */
+function ingredientScore(product: Record<string, unknown>): number {
+  let score = 0;
+  for (const field of INGREDIENT_TEXT_FIELDS) {
+    const v = product[field];
+    if (typeof v === "string" && v.trim().length > 5) score += v.trim().length;
+  }
+  const arr = product["ingredients"];
+  if (Array.isArray(arr)) score += arr.length * 10;
+  return score;
+}
+
+/** Merge ingredient data from a mirror into a base product */
+function mergeIngredients(
+  base: Record<string, unknown>,
+  source: Record<string, unknown>
+): void {
+  for (const field of INGREDIENT_TEXT_FIELDS) {
+    if (!base[field] && source[field]) base[field] = source[field];
+  }
+  if (!hasUsableIngredients(base) && source["ingredients"]) {
+    base["ingredients"] = source["ingredients"];
+  }
+  // Also merge labels/categories if missing
+  if (!base["labels_tags"] && source["labels_tags"]) base["labels_tags"] = source["labels_tags"];
+  if (!base["categories_tags"] && source["categories_tags"]) base["categories_tags"] = source["categories_tags"];
+  if (!base["allergens_tags"] && source["allergens_tags"]) base["allergens_tags"] = source["allergens_tags"];
+  if (!base["nutriments"] && source["nutriments"]) base["nutriments"] = source["nutriments"];
+}
+
+/** Try UPCitemdb as a last-resort fallback to get at least a product name */
+async function fetchProductNameFromUPCItemDB(barcode: string): Promise<string | null> {
+  // Only valid for numeric (UPC/EAN) codes
+  if (!/^\d+$/.test(barcode)) return null;
+  try {
+    const url = `https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`;
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "HalalScan/1.0 (contact@halalscan.app)",
+        "Accept": "application/json",
+      },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as {
+      code?: string;
+      items?: Array<{ title?: string; brand?: string; description?: string }>;
+    };
+    if (json.code === "OK" && json.items && json.items.length > 0) {
+      const item = json.items[0];
+      return item.title || item.brand || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── route ─────────────────────────────────────────────────────────────────────
 
 router.get("/halal/analyze/:barcode", async (req, res) => {
   const { barcode } = req.params;
 
-  if (!barcode || !/^[\d]+$/.test(barcode)) {
+  // Allow numeric EAN/UPC codes and alphanumeric codes (Code128/Code39)
+  if (!barcode || !/^[a-zA-Z0-9-]{1,50}$/.test(barcode)) {
     res.status(400).json({ error: "Code-barres invalide" });
     return;
   }
 
   let product: Record<string, unknown> | null = null;
+  const isNumericBarcode = /^\d+$/.test(barcode);
 
-  // Step 1: world endpoint with explicit fields list
+  // Step 1: Query world AND french mirror simultaneously (fastest path)
   const worldUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
-  product = await fetchFromOFF(worldUrl);
+  const frUrl = `https://fr.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
 
-  // Step 2: if found but no ingredients, try country-specific mirrors
+  const [worldProduct, frProduct] = await Promise.all([
+    fetchFromOFF(worldUrl),
+    fetchFromOFF(frUrl),
+  ]);
+
+  // Pick the richest result or merge both
+  if (worldProduct && frProduct) {
+    const worldScore = ingredientScore(worldProduct);
+    const frScore = ingredientScore(frProduct);
+    product = worldScore >= frScore ? worldProduct : frProduct;
+    // Merge missing fields from the other source
+    const other = worldScore >= frScore ? frProduct : worldProduct;
+    mergeIngredients(product, other);
+  } else {
+    product = worldProduct ?? frProduct;
+  }
+
+  // Step 2: If found but still missing ingredients, query ALL country mirrors in parallel
   if (product && !hasUsableIngredients(product)) {
-    req.log.info({ barcode }, "No ingredients from world endpoint, trying country mirrors");
-    for (const country of OFF_COUNTRY_MIRRORS) {
-      const countryUrl = `https://${country}.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
-      const countryProduct = await fetchFromOFF(countryUrl);
-      if (countryProduct && hasUsableIngredients(countryProduct)) {
-        // Merge: patch missing ingredient fields from country mirror
-        for (const field of INGREDIENT_TEXT_FIELDS) {
-          if (!product[field] && countryProduct[field]) {
-            product[field] = countryProduct[field];
-          }
+    req.log.info({ barcode }, "No ingredients from primary endpoints, querying all country mirrors");
+
+    const mirrorResults = await Promise.all(
+      OFF_COUNTRY_MIRRORS
+        .filter(c => c !== "fr") // fr already tried
+        .map(async (country) => {
+          const url = `https://${country}.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
+          return fetchFromOFF(url);
+        })
+    );
+
+    for (const mirror of mirrorResults) {
+      if (mirror && hasUsableIngredients(mirror)) {
+        mergeIngredients(product, mirror);
+        if (hasUsableIngredients(product)) {
+          req.log.info({ barcode }, "Ingredients found from country mirror");
+          break;
         }
-        if (!hasUsableIngredients(product) && countryProduct["ingredients"]) {
-          product["ingredients"] = countryProduct["ingredients"];
-        }
-        req.log.info({ barcode, country }, "Found ingredients from country mirror");
-        break;
       }
     }
   }
 
-  // Step 3: product not found at all — try v0 API
+  // Step 3: product not found at all — try v0 API and v2/world simultaneously
   if (!product) {
     const v0Url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
-    product = await fetchFromOFF(v0Url);
+    const v0Product = await fetchFromOFF(v0Url);
+    if (v0Product) product = v0Product;
   }
 
+  // Step 4: Still not found — try UPCitemdb for a product name (numeric codes only)
   if (!product) {
+    const externalName = isNumericBarcode
+      ? await fetchProductNameFromUPCItemDB(barcode)
+      : null;
+
     res.json({
       result: "unknown",
-      productName: "Produit non trouvé",
-      reason: "Ce produit n'est pas référencé dans la base OpenFoodFacts",
-      foundInDatabase: false,
+      productName: externalName || "Produit non référencé",
+      reason: externalName
+        ? `Produit trouvé (${externalName}) mais ingrédients non disponibles`
+        : "Ce produit n'est pas référencé dans les bases de données disponibles",
+      foundInDatabase: !!externalName,
       hasIngredients: false,
     } satisfies AnalysisResult);
     return;
