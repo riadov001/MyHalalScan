@@ -485,8 +485,11 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
   const genericName = normalise(
     ((product["generic_name_fr"] as string) || (product["generic_name"] as string) || "")
   );
+  // Use word-boundary containsTerm (not .includes) to avoid matching substrings:
+  // "ale" inside "minerale/naturale", "vin" inside "ravine", "gin" inside "origine", etc.
   for (const kw of HARAM_NAME_KEYWORDS) {
-    if (nameLower.includes(normalise(kw)) || genericName.includes(normalise(kw))) {
+    const normKw = normalise(kw);
+    if (containsTerm(nameLower, normKw) || containsTerm(genericName, normKw)) {
       return {
         result: "haram", productName,
         reason: `Nom du produit: "${kw}"`,

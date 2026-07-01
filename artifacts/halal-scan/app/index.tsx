@@ -8,10 +8,12 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Keyboard,
   Platform,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import Animated, {
@@ -45,6 +47,8 @@ interface ScanState {
   isOfflineQueued?: boolean;
 }
 
+const BARCODE_RE = /^[a-zA-Z0-9-]{1,50}$/;
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -52,6 +56,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [torch, setTorch] = useState(false);
   const [scanResult, setScanResult] = useState<ScanState | null>(null);
+  const [manualCode, setManualCode] = useState("");
 
   const lastBarcode = useRef<string | null>(null);
   const cooldown = useRef(false);
@@ -214,6 +219,19 @@ export default function HomeScreen() {
     setScanResult(null); lastBarcode.current = null; cooldown.current = false;
   }, []);
 
+  const handleManualSubmit = useCallback(() => {
+    const code = manualCode.trim();
+    if (!BARCODE_RE.test(code)) {
+      Alert.alert("Code invalide", "Saisissez un code-barres valide (chiffres ou lettres).");
+      return;
+    }
+    Keyboard.dismiss();
+    setManualCode("");
+    cooldown.current = false;
+    lastBarcode.current = null;
+    processBarcode(code);
+  }, [manualCode, processBarcode]);
+
   const onWhitelist = useCallback(() => {
     if (!scanResult) return;
     whitelistProduct(scanResult.barcode);
@@ -235,7 +253,7 @@ export default function HomeScreen() {
     });
   }, [loading]);
 
-  // ── Permission screens ─────────────────────────────────────────────────────
+  // ── Permission loading ─────────────────────────────────────────────────────
   if (!permission) {
     return (
       <View style={[styles.root, { paddingTop: topPad }]}>
@@ -246,28 +264,7 @@ export default function HomeScreen() {
     );
   }
 
-  if (!permission.granted) {
-    return (
-      <LinearGradient colors={[C.surface, C.bg, C.bg]} style={[styles.root, { paddingTop: topPad }]}>
-        <View style={styles.permScreen}>
-          <View style={styles.permCircle}>
-            <Text style={styles.permEmoji}>📷</Text>
-          </View>
-          <Text style={styles.permTitle}>Accès Caméra{"\n"}Requis</Text>
-          <Text style={styles.permDesc}>
-            HalalScan utilise uniquement la caméra pour lire les codes-barres.
-            Aucune photo n'est enregistrée ni partagée.
-          </Text>
-          <Pressable style={({ pressed }) => [styles.permBtn, { opacity: pressed ? 0.88 : 1 }]} onPress={requestPermission}>
-            <LinearGradient colors={[C.goldLight, C.gold, C.goldDark]} style={styles.permBtnGrad}>
-              <Text style={styles.permBtnTxt}>AUTORISER LA CAMÉRA</Text>
-            </LinearGradient>
-          </Pressable>
-          <Text style={styles.permNote}>Révocable à tout moment dans les Réglages.</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
+  const cameraGranted = permission.granted;
 
   // ── Main UI ────────────────────────────────────────────────────────────────
   return (
@@ -315,16 +312,20 @@ export default function HomeScreen() {
 
       {/* ── CAMERA AREA (flex: 1) ── */}
       <View style={styles.cameraArea}>
-        {/* live camera */}
-        <CameraView
-          style={StyleSheet.absoluteFill}
-          facing="back"
-          enableTorch={torch}
-          barcodeScannerSettings={{
-            barcodeTypes: ["ean13","ean8","upc_a","upc_e","code128","code39","qr"],
-          }}
-          onBarcodeScanned={handleBarcodeScanned}
-        />
+        {cameraGranted ? (
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            enableTorch={torch}
+            barcodeScannerSettings={{
+              barcodeTypes: ["ean13","ean8","upc_a","upc_e","code128","code39","qr"],
+            }}
+            onBarcodeScanned={handleBarcodeScanned}
+          />
+        ) : (
+          /* No camera permission — show neutral placeholder */
+          <View style={styles.noCamBg} />
+        )}
 
         {/* subtle dark vignette */}
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -347,36 +348,45 @@ export default function HomeScreen() {
 
         {/* Scan frame — centered in camera area */}
         <View style={styles.frameWrap} pointerEvents="none">
-          <View style={{ width: FRAME_W, height: FRAME_H }}>
-            {/* full hairline border */}
-            <View style={[styles.frameBorder, { opacity: scanning ? 0.35 : 0.15 }]} />
+          {cameraGranted ? (
+            <View style={{ width: FRAME_W, height: FRAME_H }}>
+              <View style={[styles.frameBorder, { opacity: scanning ? 0.35 : 0.15 }]} />
+              <Animated.View style={[StyleSheet.absoluteFill, cornerStyle]} pointerEvents="none">
+                <View style={[styles.corner, styles.cTL]} />
+                <View style={[styles.corner, styles.cTR]} />
+                <View style={[styles.corner, styles.cBL]} />
+                <View style={[styles.corner, styles.cBR]} />
+              </Animated.View>
+              <View style={styles.centerDot} />
+              <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0 }, lineStyle]} pointerEvents="none">
+                <LinearGradient
+                  colors={["transparent", C.gold, C.goldLight, C.gold, "transparent"]}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={styles.scanLine}
+                />
+              </Animated.View>
+            </View>
+          ) : (
+            <View style={styles.noCamMsg}>
+              <Text style={styles.noCamIcon}>🔒</Text>
+              <Text style={styles.noCamTxt}>Caméra non autorisée</Text>
+              <Text style={styles.noCamSub}>Utilisez la galerie ou la saisie manuelle ci-dessous</Text>
+              <Pressable
+                onPress={requestPermission}
+                style={({ pressed }) => [styles.noCamBtn, { opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Text style={styles.noCamBtnTxt}>📷  Autoriser la caméra</Text>
+              </Pressable>
+            </View>
+          )}
 
-            {/* corner marks */}
-            <Animated.View style={[StyleSheet.absoluteFill, cornerStyle]} pointerEvents="none">
-              <View style={[styles.corner, styles.cTL]} />
-              <View style={[styles.corner, styles.cTR]} />
-              <View style={[styles.corner, styles.cBL]} />
-              <View style={[styles.corner, styles.cBR]} />
-            </Animated.View>
-
-            {/* center dot */}
-            <View style={styles.centerDot} />
-
-            {/* scan line */}
-            <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0 }, lineStyle]} pointerEvents="none">
-              <LinearGradient
-                colors={["transparent", C.gold, C.goldLight, C.gold, "transparent"]}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={styles.scanLine}
-              />
-            </Animated.View>
-          </View>
-
-          <Text style={styles.frameStatus}>
-            {scanning
-              ? "🟢  Scan actif — approchez le code-barres"
-              : "Pointez la caméra vers le code-barres"}
-          </Text>
+          {cameraGranted && (
+            <Text style={styles.frameStatus}>
+              {scanning
+                ? "🟢  Scan actif — approchez le code-barres"
+                : "Pointez la caméra vers le code-barres"}
+            </Text>
+          )}
         </View>
       </View>
 
@@ -391,46 +401,51 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-            {/* Main CTA */}
-            <Animated.View style={[{ width: "100%" }, btnStyle]}>
-              <Pressable
-                onPress={toggleScan}
-                android_ripple={{ color: "rgba(255,255,255,0.12)" }}
-                style={({ pressed }) => [styles.mainBtn, { opacity: pressed ? 0.9 : 1 }]}
-              >
-                <LinearGradient
-                  colors={scanning
-                    ? ["#C83020", "#9A1E10", "#6E0E08"]
-                    : [C.goldLight, C.gold, "#A07828"]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={styles.mainBtnGrad}
+            {/* Main CTA — only show camera scan button when camera is granted */}
+            {cameraGranted && (
+              <Animated.View style={[{ width: "100%" }, btnStyle]}>
+                <Pressable
+                  onPress={toggleScan}
+                  android_ripple={{ color: "rgba(255,255,255,0.12)" }}
+                  style={({ pressed }) => [styles.mainBtn, { opacity: pressed ? 0.9 : 1 }]}
                 >
-                  <Text style={styles.mainBtnIcon}>{scanning ? "⏹" : "📷"}</Text>
-                  <Text style={styles.mainBtnTxt}>
-                    {scanning ? "ARRÊTER LE SCAN" : "SCANNER UN PRODUIT"}
-                  </Text>
-                </LinearGradient>
-              </Pressable>
-            </Animated.View>
+                  <LinearGradient
+                    colors={scanning
+                      ? ["#C83020", "#9A1E10", "#6E0E08"]
+                      : [C.goldLight, C.gold, "#A07828"]}
+                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    style={styles.mainBtnGrad}
+                  >
+                    <Text style={styles.mainBtnIcon}>{scanning ? "⏹" : "📷"}</Text>
+                    <Text style={styles.mainBtnTxt}>
+                      {scanning ? "ARRÊTER LE SCAN" : "SCANNER UN PRODUIT"}
+                    </Text>
+                  </LinearGradient>
+                </Pressable>
+              </Animated.View>
+            )}
 
-            {/* Secondary row: Flash + Gallery */}
+            {/* Secondary row: Flash (if camera) + Gallery (always) */}
             <View style={styles.secondaryRow}>
-              <Pressable
-                onPress={() => setTorch(v => !v)}
-                android_ripple={{ color: "rgba(255,255,255,0.1)", borderless: false }}
-                style={({ pressed }) => [
-                  styles.secBtn,
-                  torch && styles.secBtnActive,
-                  { opacity: pressed ? 0.8 : 1 },
-                ]}
-              >
-                <Text style={styles.secBtnEmoji}>{torch ? "🔦" : "🔦"}</Text>
-                <Text style={[styles.secBtnTxt, torch && { color: C.gold }]}>
-                  {torch ? "Flash ON" : "Flash"}
-                </Text>
-              </Pressable>
-
-              <View style={styles.secDivider} />
+              {cameraGranted && (
+                <>
+                  <Pressable
+                    onPress={() => setTorch(v => !v)}
+                    android_ripple={{ color: "rgba(255,255,255,0.1)", borderless: false }}
+                    style={({ pressed }) => [
+                      styles.secBtn,
+                      torch && styles.secBtnActive,
+                      { opacity: pressed ? 0.8 : 1 },
+                    ]}
+                  >
+                    <Text style={styles.secBtnEmoji}>🔦</Text>
+                    <Text style={[styles.secBtnTxt, torch && { color: C.gold }]}>
+                      {torch ? "Flash ON" : "Flash"}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.secDivider} />
+                </>
+              )}
 
               <Pressable
                 onPress={pickFromGallery}
@@ -439,6 +454,28 @@ export default function HomeScreen() {
               >
                 <Text style={styles.secBtnEmoji}>🖼</Text>
                 <Text style={styles.secBtnTxt}>Galerie</Text>
+              </Pressable>
+            </View>
+
+            {/* Manual barcode entry */}
+            <View style={styles.manualRow}>
+              <TextInput
+                style={styles.manualInput}
+                value={manualCode}
+                onChangeText={setManualCode}
+                placeholder="Saisir un code-barres manuellement"
+                placeholderTextColor="rgba(255,255,255,0.28)"
+                keyboardType="default"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                onSubmitEditing={handleManualSubmit}
+              />
+              <Pressable
+                onPress={handleManualSubmit}
+                style={({ pressed }) => [styles.manualBtn, { opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Text style={styles.manualBtnTxt}>OK</Text>
               </Pressable>
             </View>
 
@@ -621,19 +658,36 @@ const styles = StyleSheet.create({
   trustDot: { width: 4.5, height: 4.5, borderRadius: 3, backgroundColor: C.halalLight },
   trustTxt: { fontSize: 11, color: C.textMuted, fontWeight: "500", textAlign: "center" },
 
-  // permission
-  permScreen: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 36, gap: 20 },
-  permCircle: {
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: "rgba(200,150,60,0.10)",
-    borderWidth: 1.5, borderColor: "rgba(200,150,60,0.35)",
+  // no-camera state
+  noCamBg: { ...StyleSheet.absoluteFillObject, backgroundColor: "#05100A" } as object,
+  noCamMsg: { alignItems: "center", gap: 12, paddingHorizontal: 32 },
+  noCamIcon: { fontSize: 52 },
+  noCamTxt: { fontSize: 20, fontWeight: "800", color: "rgba(255,255,255,0.55)", textAlign: "center" },
+  noCamSub: { fontSize: 14, color: "rgba(255,255,255,0.32)", textAlign: "center", lineHeight: 22 },
+  noCamBtn: {
+    marginTop: 6, borderRadius: 14, overflow: "hidden",
+    backgroundColor: "rgba(200,150,60,0.18)",
+    borderWidth: 1, borderColor: "rgba(200,150,60,0.35)",
+    paddingVertical: 12, paddingHorizontal: 24,
+  },
+  noCamBtnTxt: { fontSize: 15, fontWeight: "700", color: C.gold },
+
+  // manual barcode entry
+  manualRow: {
+    flexDirection: "row", width: "100%", gap: 10, alignItems: "center",
+  },
+  manualInput: {
+    flex: 1, height: 50, borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    paddingHorizontal: 16, fontSize: 15,
+    color: C.text,
+  },
+  manualBtn: {
+    height: 50, paddingHorizontal: 20, borderRadius: 14,
+    backgroundColor: "rgba(200,150,60,0.20)",
+    borderWidth: 1, borderColor: "rgba(200,150,60,0.40)",
     alignItems: "center", justifyContent: "center",
   },
-  permEmoji: { fontSize: 48 },
-  permTitle: { fontSize: 30, fontWeight: "900", color: C.text, textAlign: "center", lineHeight: 40 },
-  permDesc: { fontSize: 17, color: C.textSub, textAlign: "center", lineHeight: 26 },
-  permBtn: { width: "100%", borderRadius: 18, overflow: "hidden" },
-  permBtnGrad: { paddingVertical: 21, alignItems: "center" },
-  permBtnTxt: { fontSize: 18, fontWeight: "900", color: C.bg, letterSpacing: 1.5 },
-  permNote: { fontSize: 12, color: C.textMuted, textAlign: "center" },
+  manualBtnTxt: { fontSize: 15, fontWeight: "800", color: C.gold },
 });
