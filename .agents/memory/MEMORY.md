@@ -1,3 +1,4 @@
 - [HalalScan SQLite + Offline Architecture](halalscan-architecture.md) — SQLite via expo-sqlite 16.x replaces AsyncStorage; offline queue auto-syncs on reconnect
 - [HalalScan Package Versions](halalscan-packages.md) — expo-sqlite must be ~16.0.10 and expo-network must be ~8.0.8 for Expo 54
-- [HalalScan Barcode Scanner API](halalscan-scanner.md) — expo-camera 17 requires launchScanner+onModernBarcodeScanned on modern devices; legacy onBarcodeScanned unreliable
+- [HalalScan Barcode Scanner API](halalscan-scanner.md) — expo-camera 17 types do NOT expose onModernBarcodeScanned; use onBarcodeScanned only
+- [HalalScan Analysis Reliability Fixes](halalscan-analysis-fixes.md) — critical bugs fixed: E-code space normalisation, alcool/vin standalone, parallel OFF queries, alphanumeric barcode validation

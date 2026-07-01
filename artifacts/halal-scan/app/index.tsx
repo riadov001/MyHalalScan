@@ -170,6 +170,7 @@ export default function HomeScreen() {
     processBarcode(data);
   }, [processBarcode]);
 
+
   // ── Gallery picker ────────────────────────────────────────────────────────
   const pickFromGallery = useCallback(async () => {
     if (loadingRef.current) return;
