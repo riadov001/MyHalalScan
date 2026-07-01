@@ -2,3 +2,4 @@
 - [HalalScan Package Versions](halalscan-packages.md) — expo-sqlite must be ~16.0.10 and expo-network must be ~8.0.8 for Expo 54
 - [HalalScan Barcode Scanner API](halalscan-scanner.md) — expo-camera 17 types do NOT expose onModernBarcodeScanned; use onBarcodeScanned only
 - [HalalScan Analysis Reliability Fixes](halalscan-analysis-fixes.md) — critical bugs fixed: E-code space normalisation, alcool/vin standalone, parallel OFF queries, alphanumeric barcode validation
+- [HalalScan Ingredient Classification](halalscan-classification.md) — E471/E472a-f/E473-E479b/E422/E570/E470a-b/E1518/collagène now HARAM (not warning); user-configurable list planned for Task #5

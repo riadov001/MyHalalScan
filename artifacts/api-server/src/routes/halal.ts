@@ -15,6 +15,7 @@ const HARAM_INGREDIENTS: string[] = [
   "jarret de porc", "epaule de porc", "longe de porc",
   "gelatine de porc", "gelatine porcine", "proteines de porc",
   "proteines de peau de porc", "collagene de porc",
+  "enzymes porcines", "extrait de porc", "graisse animale de porc",
   // ── pork (EN) ──
   "pork", "pig", "swine", "ham", "pork lard", "fatback", "pork belly",
   "pork rind", "crackling", "pepperoni", "pork gelatin", "pork collagen",
@@ -49,7 +50,7 @@ const HARAM_INGREDIENTS: string[] = [
   "anisette", "amaretto", "schnaps",
   // ── alcohol (EN) ──
   "alcohol", "ethyl alcohol", "rum", "bourbon", "mead",
-  "hard cider", "spirits", "wine spirits", "beer extract",
+  "hard cider", "spirits", "spirit", "wine spirits", "beer extract",
   "wine", "beer", "cider",
   // ── alcohol (DE) ──
   "alkohol", "wein", "weinbrand", "bier",
@@ -61,8 +62,25 @@ const HARAM_INGREDIENTS: string[] = [
   "sang de boeuf", "sang de porc", "sang", "plasma sanguin",
   "serum sanguin", "blood plasma", "blood serum", "albumine de sang",
   "blutplasma", "blut",
-  // ── gelatin — pork/unspecified ──
+  // ── gelatin — pork/unspecified + collagen ──
   "gelatine de porc", "pork gelatin", "gelatine porcine",
+  "collagene", "collagen", "peptides de collagene", "collagen peptides",
+  "gelatine hydrolysee", "gelatine hydrolyse", "hydrolyzed gelatin",
+  "hydrolysed gelatin", "gelatine partiellement hydrolysee",
+  // ── emulsifiers — animal-derived fatty acid esters (E471–E479b) ──
+  "e471", "mono et diglycerides d acides gras",
+  "monoglycerides", "diglycerides", "mono and diglycerides",
+  "e472a", "e472b", "e472c", "e472d", "e472e", "e472f",
+  "e473", "e474", "e475", "e476", "e477", "e478", "e479b",
+  // ── glycerine / glycerol & derivatives ──
+  "e422", "glycerine", "glycerol",
+  "monostearate de glycerine", "distearate de glycerine",
+  "glyceryl monostearate",
+  // ── triacetine ──
+  "e1518", "triacetin", "triacetine",
+  // ── fatty acids & stearates ──
+  "e570", "acide stearique", "stearic acid", "stearine",
+  "e470a", "e470b", "stearate", "esters d acides gras",
   // ── haram e-numbers ──
   "e441",   // gelatin (pork/bovine, unspecified)
   "e542",   // bone phosphate (from animal bone)
@@ -76,21 +94,6 @@ const HARAM_GELATIN_TERMS: string[] = [
 ];
 
 const WARNING_INGREDIENTS: string[] = [
-  // ── glycerides / emulsifiers (may be animal-derived) ──
-  "e471", "mono et diglycerides d acides gras",
-  "monoglycerides", "diglycerides",
-  "mono and diglycerides",
-  "e472a", "e472b", "e472c", "e472d", "e472e", "e472f",
-  "e473", "e474", "e475", "e476", "e477", "e478", "e479b",
-  // ── glycerol / glycerine ──
-  "e422", "glycerine", "glycerol",
-  "monostearate de glycerine", "distearate de glycerine",
-  "glyceryl monostearate",
-  // ── stearates ──
-  "e570", "acide stearique", "stearic acid", "stearine",
-  "e470a", "e470b", "stearate",
-  // ── glyceryl triacetate ──
-  "e1518", "triacetin",
   // ── l-cysteine ──
   "e920", "l cysteine", "cysteine",
   // ── rennet / présure ──
@@ -108,16 +111,14 @@ const WARNING_INGREDIENTS: string[] = [
   "aromes naturels", "arome naturel", "natural flavors",
   "natural flavour", "naturliche aromen",
   "aroma naturale", "aromas naturales",
-  // ── collagen (non-pork) ──
-  "collagene", "collagen", "peptides de collagene",
   // ── whey / casein (animal origin, may contain rennet) ──
   "lactoserum", "whey", "caseine", "casein",
   // ── tallow / suif ──
   "suif", "tallow", "beef tallow", "graisse animale",
-  // ── malt extract (non-alcoholic food use, but source of debate) ──
+  // ── malt extract ──
   "extrait de malt",
   // ── carmine variants ──
-  "e124", // Ponceau 4R - sometimes from carmine
+  "e124",
 ];
 
 const HARAM_CATEGORIES: string[] = [

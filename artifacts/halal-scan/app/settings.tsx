@@ -16,38 +16,113 @@ import C from "@/constants/colors";
 const HARAM: { emoji: string; title: string; items: string[] }[] = [
   {
     emoji: "🐷", title: "Porc & dérivés",
-    items: ["Porc · Pork · Schwein · Cerdo · Maiale", "Lard · Saindoux · Graisse de porc", "Bacon · Lardons · Jambon · Prosciutto", "Pancetta · Coppa · Mortadelle · Saucisson", "Boudin noir · Andouille · Rillettes", "Gélatine de porc / porcine", "Collagène de porc · Protéines de porc", "Couenne · Pork rind · Crackling · Speck"],
+    items: [
+      "Porc · Pork · Schwein · Cerdo · Maiale",
+      "Lard · Saindoux · Graisse de porc",
+      "Bacon · Lardons · Jambon · Prosciutto",
+      "Pancetta · Coppa · Mortadelle · Saucisson",
+      "Boudin noir · Andouille · Rillettes",
+      "Gélatine de porc / porcine",
+      "Collagène de porc · Protéines de porc",
+      "Enzymes porcines · Extrait de porc",
+      "Couenne · Pork rind · Crackling · Speck",
+    ],
   },
   {
     emoji: "🍷", title: "Alcool",
-    items: ["Alcool éthylique · Éthanol", "Vin blanc · Vin rouge · Vin rosé", "Bière · Malt de bière", "Rhum · Vodka · Whisky · Cognac · Gin", "Champagne · Prosecco · Crémant · Cava", "Liqueur · Brandy · Calvados · Porto", "Saké · Vermouth · Absinthe · Pastis", "Cidre alcoolisé"],
+    items: [
+      "Alcool éthylique · Éthanol · Ethyl alcohol",
+      "Alcohol · Spirit",
+      "Vin blanc · Vin rouge · Vin rosé",
+      "Bière · Beer",
+      "Rhum · Rum · Vodka · Whisky · Cognac · Gin",
+      "Champagne · Prosecco · Crémant · Cava",
+      "Liqueur · Brandy · Calvados · Porto",
+      "Saké · Vermouth · Absinthe · Pastis · Cidre alcoolisé",
+    ],
   },
   {
     emoji: "🩸", title: "Sang",
-    items: ["Sang (bœuf, porc, non spécifié)", "Plasma sanguin · Sérum sanguin", "Blood plasma · Blood serum", "Albumine de sang"],
+    items: [
+      "Sang (bœuf, porc, non spécifié)",
+      "Plasma sanguin · Sérum sanguin",
+      "Blood plasma · Blood serum",
+      "Albumine de sang",
+    ],
   },
   {
-    emoji: "🦴", title: "Gélatine non précisée",
-    items: ["Gélatine (sans précision d'origine)", "Gelatin · Gelatine · Gelatina", "E441 — Gélatine", "E542 — Phosphate d'os"],
+    emoji: "🦴", title: "Gélatine, Collagène & dérivés",
+    items: [
+      "Gélatine (sans précision d'origine)",
+      "Gelatin · Gelatine · Gelatina",
+      "E441 — Gélatine",
+      "E542 — Phosphate d'os",
+      "Gélatine hydrolysée · Gélatine partiellement hydrolysée",
+      "Hydrolyzed gelatin",
+      "Collagène · Collagen",
+      "Peptides de collagène · Collagen peptides",
+    ],
+  },
+  {
+    emoji: "⚗️", title: "Émulsifiants — esters d'acides gras",
+    items: [
+      "E471 — Mono- et diglycérides d'acides gras",
+      "E472a — Esters acétiques de mono/diglycérides",
+      "E472b — Esters lactiques de mono/diglycérides",
+      "E472c — Esters citriques de mono/diglycérides",
+      "E472d — Esters tartriques de mono/diglycérides",
+      "E472e — Esters diacétyltartriques (DATEM)",
+      "E472f — Esters mixtes acétiques/tartriques",
+      "E473 — Esters de saccharose",
+      "E474 — Sucroglycérides",
+      "E475 — Esters polyglycériques d'acides gras",
+      "E476 — Polyricinoléate de polyglycérol",
+      "E477 — Esters de propylène glycol",
+      "E478 · E479b",
+    ],
+  },
+  {
+    emoji: "🧴", title: "Glycérine, Glycérol & acides gras",
+    items: [
+      "E422 — Glycérine / Glycérol",
+      "Monostéarate de glycérine",
+      "Distéarate de glycérine",
+      "Glyceryl monostearate",
+      "E1518 — Triacétine",
+      "E570 — Acide stéarique / Stéarine",
+      "E470a · E470b — Sels d'acides gras",
+      "Esters d'acides gras",
+      "Stéarate",
+    ],
   },
 ];
 
 const WARNING: { emoji: string; title: string; items: string[] }[] = [
   {
-    emoji: "⚗️", title: "Émulsifiants (origine inconnue)",
-    items: ["E471 — Mono et diglycérides d'acides gras", "E472a-f — Esters d'acides gras", "E473 · E474 · E475 · E476 · E477", "E422 — Glycérine / Glycérol", "E570 — Acide stéarique / Stéarine"],
-  },
-  {
     emoji: "🧪", title: "Additifs à vérifier",
-    items: ["E920 — L-Cystéine (souvent d'origine animale)", "E120 — Carmin / Cochenille (insecte)", "E904 — Shellac / Laque de gomme (insecte)", "E1518 — Triacétine"],
+    items: [
+      "E920 — L-Cystéine (souvent d'origine animale)",
+      "E120 — Carmin / Cochenille (insecte)",
+      "E904 — Shellac / Laque de gomme (insecte)",
+    ],
   },
   {
     emoji: "🧫", title: "Enzymes & présure",
-    items: ["Présure animale · Rennet · Rennin", "Enzymes de coagulation", "Chymosin (peut être d'origine animale)"],
+    items: [
+      "Présure animale · Rennet · Rennin",
+      "Enzymes de coagulation",
+      "Chymosin (peut être d'origine animale)",
+    ],
   },
   {
-    emoji: "🥛", title: "Arômes & dérivés",
-    items: ["Arômes naturels (source inconnue)", "Gélatine bovine / beef gelatin → warning", "Gélatine de poisson → warning", "Lactosérum / Whey · Caséine / Casein", "Suif / Tallow (graisse de bœuf)"],
+    emoji: "🥛", title: "Arômes & dérivés (origine incertaine)",
+    items: [
+      "Arômes naturels (source inconnue)",
+      "Gélatine bovine / beef gelatin — abattage non certifié",
+      "Gélatine de poisson — avis divergents entre savants",
+      "Lactosérum / Whey · Caséine / Casein",
+      "Suif / Tallow (graisse de bœuf)",
+    ],
   },
 ];
 
