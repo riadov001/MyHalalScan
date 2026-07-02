@@ -2,16 +2,19 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import C from "@/constants/colors";
+import { useScanContext } from "@/context/ScanContext";
 
 const HARAM: { emoji: string; title: string; items: string[] }[] = [
   {
@@ -129,7 +132,13 @@ const WARNING: { emoji: string; title: string; items: string[] }[] = [
 const HALAL_OK: { emoji: string; title: string; items: string[] }[] = [
   {
     emoji: "✅", title: "Ingrédients toujours halal",
-    items: ["Vinaigre (toutes formes) — alcool converti en acide acétique", "Levure de bière — levure, pas de l'alcool", "Gélatine végétale · Gélatine de fruits", "Agar-agar — gélifiant végétal", "Extraits de plantes · Épices naturelles"],
+    items: [
+      "Vinaigre (toutes formes) — alcool converti en acide acétique",
+      "Levure de bière — levure, pas de l'alcool",
+      "Gélatine végétale · Gélatine de fruits",
+      "Agar-agar — gélifiant végétal",
+      "Extraits de plantes · Épices naturelles",
+    ],
   },
 ];
 
@@ -164,6 +173,118 @@ function Group({ emoji, title, items, accent }: { emoji: string; title: string; 
   );
 }
 
+function CustomGroup() {
+  const { customIngredients, addCustomIngredient, removeCustomIngredient } = useScanContext();
+  const [open, setOpen] = useState(true);
+  const [inputVal, setInputVal] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = async () => {
+    const term = inputVal.trim();
+    if (!term) return;
+    if (term.length > 60) {
+      Alert.alert("Terme trop long", "Maximum 60 caractères.");
+      return;
+    }
+    await addCustomIngredient(term);
+    setInputVal("");
+    setAdding(false);
+  };
+
+  const handleDelete = (id: number, term: string) => {
+    Alert.alert(
+      "Supprimer cet ingrédient ?",
+      `"${term}" ne sera plus surveillé.`,
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "Supprimer", style: "destructive", onPress: () => removeCustomIngredient(id) },
+      ],
+    );
+  };
+
+  const accent = C.haramLight;
+
+  return (
+    <View style={[styles.group, { borderLeftColor: accent }]}>
+      <Pressable
+        onPress={() => setOpen(v => !v)}
+        android_ripple={{ color: "rgba(255,255,255,0.06)" }}
+        style={styles.groupHead}
+      >
+        <View style={[styles.groupEmojiWrap, { backgroundColor: accent + "15", borderColor: accent + "30" }]}>
+          <Text style={styles.groupEmoji}>✏️</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.groupTitle}>Mes ingrédients personnalisés</Text>
+          {customIngredients.length > 0 && (
+            <Text style={[styles.customCount, { color: accent }]}>{customIngredients.length} terme{customIngredients.length > 1 ? "s" : ""} surveillé{customIngredients.length > 1 ? "s" : ""}</Text>
+          )}
+        </View>
+        <View style={[styles.chevWrap, { backgroundColor: accent + "15" }]}>
+          <Text style={[styles.chev, { color: accent }]}>{open ? "▲" : "▼"}</Text>
+        </View>
+      </Pressable>
+
+      {open && (
+        <View style={[styles.groupItems, { borderTopColor: accent + "20", gap: 0 }]}>
+          <Text style={styles.customHint}>
+            Ajoutez ici vos propres termes. Ils déclencheront automatiquement NON HALAL lors d'un scan.
+          </Text>
+
+          {customIngredients.length === 0 && !adding && (
+            <Text style={styles.customEmpty}>Aucun ingrédient personnalisé</Text>
+          )}
+
+          {customIngredients.map((ci) => (
+            <View key={ci.id} style={styles.customItemRow}>
+              <View style={[styles.itemDot, { backgroundColor: accent, marginTop: 10 }]} />
+              <Text style={[styles.itemText, { flex: 1 }]}>{ci.term}</Text>
+              <Pressable
+                onPress={() => handleDelete(ci.id, ci.term)}
+                hitSlop={10}
+                style={styles.customDeleteBtn}
+              >
+                <Text style={styles.customDeleteTxt}>✕</Text>
+              </Pressable>
+            </View>
+          ))}
+
+          {adding ? (
+            <View style={styles.customInputRow}>
+              <TextInput
+                style={styles.customInput}
+                value={inputVal}
+                onChangeText={setInputVal}
+                placeholder="ex: huile de poisson…"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={60}
+                returnKeyType="done"
+                onSubmitEditing={handleAdd}
+              />
+              <Pressable onPress={handleAdd} style={[styles.customConfirmBtn, { backgroundColor: accent }]}>
+                <Text style={styles.customConfirmTxt}>OK</Text>
+              </Pressable>
+              <Pressable onPress={() => { setAdding(false); setInputVal(""); }} hitSlop={8} style={styles.customCancelBtn}>
+                <Text style={styles.customCancelTxt}>✕</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              onPress={() => setAdding(true)}
+              style={({ pressed }) => [styles.customAddBtn, { opacity: pressed ? 0.75 : 1, borderColor: accent + "50" }]}
+            >
+              <Text style={[styles.customAddTxt, { color: accent }]}>＋  Ajouter un ingrédient</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function SectionTitle({ label, color }: { label: string; color: string }) {
   return (
     <View style={styles.sectionRow}>
@@ -181,7 +302,6 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: topPad }]}>
-      {/* Header */}
       <LinearGradient colors={[C.surface, C.bg]} style={styles.header}>
         <Pressable
           style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1 }]}
@@ -201,7 +321,6 @@ export default function SettingsScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: botPad + 16 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Info card */}
         <View style={styles.infoCard}>
           <View style={[styles.infoIconWrap, { backgroundColor: C.gold + "18", borderColor: C.gold + "40" }]}>
             <Text style={styles.infoIcon}>🔬</Text>
@@ -209,33 +328,30 @@ export default function SettingsScreen() {
           <View style={styles.infoBody}>
             <Text style={styles.infoTitle}>Comment ça fonctionne</Text>
             <Text style={styles.infoText}>
-              L'algorithme analyse la liste d'ingrédients de chaque produit scanné et la compare à cette base de données.
-              Appuyez sur une catégorie pour voir les termes surveillés.
+              L'algorithme compare les ingrédients de chaque produit à cette liste.
+              Ajoutez vos propres termes dans "Mes ingrédients personnalisés".
             </Text>
           </View>
         </View>
 
-        {/* HARAM */}
         <SectionTitle label="INGRÉDIENTS INTERDITS" color={C.haramLight} />
+        <CustomGroup />
         {HARAM.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.haramLight} />)}
 
-        {/* WARNING */}
         <SectionTitle label="À VÉRIFIER" color={C.warningLight} />
         {WARNING.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.warningLight} />)}
 
-        {/* HALAL */}
         <SectionTitle label="TOUJOURS AUTORISÉ" color={C.halalLight} />
         {HALAL_OK.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.halalLight} />)}
 
-        {/* Explanation card */}
         <View style={styles.explainCard}>
           <Text style={styles.explainTitle}>📌  Comprendre les résultats</Text>
           <View style={styles.explainRows}>
             {[
-              { color: C.halalLight,   dot: "●", bold: "HALAL", txt: "Aucun ingrédient interdit détecté. Produit conforme." },
+              { color: C.halalLight,   dot: "●", bold: "HALAL",      txt: "Aucun ingrédient interdit détecté. Produit conforme." },
               { color: C.warningLight, dot: "●", bold: "À VÉRIFIER", txt: "Un ingrédient d'origine incertaine est présent. Contactez le fabricant." },
-              { color: C.haramLight,   dot: "●", bold: "NON HALAL", txt: "Un ingrédient interdit a été détecté avec certitude." },
-              { color: C.textSub,      dot: "●", bold: "INCONNU", txt: "Produit non trouvé ou ingrédients non disponibles." },
+              { color: C.haramLight,   dot: "●", bold: "NON HALAL",  txt: "Un ingrédient interdit a été détecté avec certitude." },
+              { color: C.textSub,      dot: "●", bold: "INCONNU",    txt: "Produit non trouvé ou ingrédients non disponibles." },
               { color: C.gold,         dot: "●", bold: "HORS LIGNE", txt: "Analysé automatiquement au retour de la connexion." },
             ].map((r, i) => (
               <View key={i} style={styles.explainRow}>
@@ -249,7 +365,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Source */}
         <View style={styles.sourceCard}>
           <Text style={styles.sourceTxt}>
             🌐  Source des données : Open Food Facts{"\n"}
@@ -321,6 +436,44 @@ const styles = StyleSheet.create({
   itemRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   itemDot: { width: 5, height: 5, borderRadius: 3, marginTop: 8, flexShrink: 0 },
   itemText: { flex: 1, fontSize: 13, color: C.textSub, lineHeight: 20 },
+
+  customCount: { fontSize: 11, fontWeight: "600", marginTop: 1 },
+  customHint: { fontSize: 12, color: C.textMuted, lineHeight: 17, marginBottom: 8 },
+  customEmpty: { fontSize: 13, color: C.textMuted, fontStyle: "italic", marginBottom: 4 },
+
+  customItemRow: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 36 },
+  customDeleteBtn: {
+    width: 28, height: 28, borderRadius: 8,
+    backgroundColor: "rgba(200,48,32,0.15)",
+    alignItems: "center", justifyContent: "center",
+  },
+  customDeleteTxt: { fontSize: 12, color: "#C83020", fontWeight: "700" },
+
+  customInputRow: { flexDirection: "row", gap: 6, marginTop: 4, alignItems: "center" },
+  customInput: {
+    flex: 1, height: 40, borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    paddingHorizontal: 10, fontSize: 13, color: C.text,
+  },
+  customConfirmBtn: {
+    height: 40, paddingHorizontal: 14, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+  },
+  customConfirmTxt: { fontSize: 13, fontWeight: "800", color: C.bg },
+  customCancelBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  customCancelTxt: { fontSize: 13, color: C.textSub },
+
+  customAddBtn: {
+    marginTop: 6, paddingVertical: 9, borderRadius: 8,
+    borderWidth: 1, borderStyle: "dashed",
+    alignItems: "center",
+  },
+  customAddTxt: { fontSize: 13, fontWeight: "700" },
 
   explainCard: {
     backgroundColor: C.surface, borderRadius: 16,

@@ -3,7 +3,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +12,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -30,7 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ResultOverlay from "@/components/ResultOverlay";
 import C from "@/constants/colors";
-import { type ScanResult, useScanContext } from "@/context/ScanContext";
+import { checkCustomIngredients, type ScanResult, useScanContext } from "@/context/ScanContext";
 import type { Product } from "@/lib/db";
 
 const { width: W } = Dimensions.get("window");
@@ -68,7 +69,8 @@ export default function HomeScreen() {
   const {
     addProduct, queueOfflineScan, whitelistProduct,
     getProduct, isWhitelisted, isOnline, pendingBarcodes,
-    processPendingQueue, products,
+    processPendingQueue, products, soundEnabled, setSoundEnabled,
+    customIngredients,
   } = useScanContext();
 
   const histCount = Object.keys(products).length;
@@ -127,6 +129,12 @@ export default function HomeScreen() {
   const btnStyle = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
 
   // ── Core scan logic ───────────────────────────────────────────────────────
+  const customIngredientsRef = useRef(customIngredients);
+  useEffect(() => { customIngredientsRef.current = customIngredients; }, [customIngredients]);
+
+  const soundEnabledRef = useRef(soundEnabled);
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+
   const processBarcode = useCallback(async (barcode: string) => {
     if (cooldown.current || loadingRef.current || lastBarcode.current === barcode) return;
     cooldown.current = true;
@@ -136,7 +144,9 @@ export default function HomeScreen() {
     setTorch(false);
     loadingRef.current = true;
     setLoading(true);
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (Platform.OS !== "web" && soundEnabledRef.current) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    }
 
     const cached = getProduct(barcode);
     if (cached && !pendingBarcodes.includes(barcode)) {
@@ -163,15 +173,27 @@ export default function HomeScreen() {
         result: ScanResult; productName: string; reason?: string;
         ingredientsText?: string; ingredientsList?: string[];
       };
+
+      // Local custom-ingredient override: if any custom term found in ingredients → HARAM
+      let finalResult = json.result;
+      let finalReason = json.reason;
+      const customHit = json.ingredientsText
+        ? checkCustomIngredients(json.ingredientsText, customIngredientsRef.current)
+        : null;
+      if (customHit && finalResult !== "haram") {
+        finalResult = "haram";
+        finalReason = `Ingrédient personnalisé détecté : "${customHit}"`;
+      }
+
       const product: Product = {
-        barcode, result: json.result, productName: json.productName, timestamp: Date.now(),
-        reason: json.reason, ingredientsText: json.ingredientsText,
+        barcode, result: finalResult, productName: json.productName, timestamp: Date.now(),
+        reason: finalReason, ingredientsText: json.ingredientsText,
         ingredientsList: json.ingredientsList, isWhitelisted: false,
       };
       await addProduct(product);
       setScanResult({
-        result: isWhitelisted(barcode) ? "halal" : json.result,
-        productName: json.productName, barcode, reason: json.reason,
+        result: isWhitelisted(barcode) ? "halal" : finalResult,
+        productName: json.productName, barcode, reason: finalReason,
         ingredientsText: json.ingredientsText, ingredientsList: json.ingredientsList,
       });
     } catch {
@@ -181,16 +203,23 @@ export default function HomeScreen() {
     } finally { loadingRef.current = false; setLoading(false); }
   }, [getProduct, isWhitelisted, addProduct, queueOfflineScan, isOnline, pendingBarcodes]);
 
-  const handleBarcodeScanned = useCallback(({ data }: { data: string }) => {
+  // ── Stable camera callback — CameraView gets the same function ref every render ──
+  // This prevents the native barcode scanner from resetting when component state changes.
+  const latestBarcodeHandler = useRef<(e: { data: string }) => void>(() => {});
+  latestBarcodeHandler.current = useCallback(({ data }: { data: string }) => {
     if (!scanningRef.current) return;
     processBarcode(data);
   }, [processBarcode]);
+
+  const stableOnBarcodeScanned = useMemo(
+    () => (e: { data: string }) => latestBarcodeHandler.current(e),
+    [],
+  );
 
   // ── Gallery picker ────────────────────────────────────────────────────────
   const pickFromGallery = useCallback(async () => {
     if (loadingRef.current) return;
 
-    // iOS: Camera.scanFromURLAsync only supports QR codes — EAN-13/8 will never work
     if (Platform.OS === "ios") {
       Alert.alert(
         "Galerie non disponible sur iPhone",
@@ -214,7 +243,6 @@ export default function HomeScreen() {
       loadingRef.current = true;
       setLoading(true);
 
-      // Android: ensure file:// prefix for scanFromURLAsync
       const uri = rawUri.startsWith("file://") ? rawUri : `file://${rawUri}`;
 
       let barcodeData: string | null = null;
@@ -248,7 +276,7 @@ export default function HomeScreen() {
     setScanResult(null);
     lastBarcode.current = null;
     cooldown.current = false;
-    autoStartedRef.current = false; // allow auto-start to re-trigger
+    autoStartedRef.current = false;
   }, []);
 
   const handleManualSubmit = useCallback(() => {
@@ -272,7 +300,9 @@ export default function HomeScreen() {
 
   const toggleScan = useCallback(() => {
     if (loading) return;
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (Platform.OS !== "web" && soundEnabledRef.current) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
     btnScale.value = withSequence(
       withTiming(0.96, { duration: 75 }),
       withSpring(1, { damping: 14 }),
@@ -302,7 +332,7 @@ export default function HomeScreen() {
   return (
     <View style={styles.root}>
 
-      {/* ── OFFLINE BANNER (top, before header) ── */}
+      {/* ── OFFLINE BANNER ── */}
       {(!isOnline || pendingBarcodes.length > 0) && (
         <Animated.View style={[styles.offlineBanner, { paddingTop: topPad + 6 }, offlineStyle]}>
           <View style={[styles.offlineDot, { backgroundColor: isOnline ? C.gold : C.warning }]} />
@@ -341,7 +371,7 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* ── CAMERA AREA (flex: 1) ── */}
+      {/* ── CAMERA AREA ── */}
       <View style={styles.cameraArea}>
         {cameraGranted ? (
           <CameraView
@@ -351,14 +381,12 @@ export default function HomeScreen() {
             barcodeScannerSettings={{
               barcodeTypes: ["ean13","ean8","upc_a","upc_e","code128","code39","qr"],
             }}
-            onBarcodeScanned={handleBarcodeScanned}
+            onBarcodeScanned={stableOnBarcodeScanned}
           />
         ) : (
-          /* No camera permission — show neutral placeholder */
           <View style={styles.noCamBg} />
         )}
 
-        {/* subtle dark vignette */}
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <LinearGradient
             colors={["rgba(6,13,9,0.72)", "transparent"]}
@@ -377,7 +405,7 @@ export default function HomeScreen() {
           pointerEvents="none"
         />
 
-        {/* Scan frame — centered in camera area */}
+        {/* Scan frame */}
         <View style={styles.frameWrap} pointerEvents="none">
           {cameraGranted ? (
             <View style={{ width: FRAME_W, height: FRAME_H }}>
@@ -421,10 +449,9 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* ── BOTTOM PANEL (solid background — clearly separate) ── */}
+      {/* ── BOTTOM PANEL ── */}
       <View style={[styles.bottomPanel, { paddingBottom: botPad + 16 }]}>
         {loading ? (
-          /* Loading state */
           <View style={styles.loadingBox}>
             <ActivityIndicator size="large" color={C.gold} />
             <Text style={styles.loadingTxt}>Analyse en cours…</Text>
@@ -432,7 +459,6 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-            {/* Main CTA — only show camera scan button when camera is granted */}
             {cameraGranted && (
               <Animated.View style={[{ width: "100%" }, btnStyle]}>
                 <Pressable
@@ -456,7 +482,6 @@ export default function HomeScreen() {
               </Animated.View>
             )}
 
-            {/* Secondary row: Flash (if camera) + Gallery (always) */}
             <View style={styles.secondaryRow}>
               {cameraGranted && (
                 <>
@@ -488,7 +513,6 @@ export default function HomeScreen() {
               </Pressable>
             </View>
 
-            {/* Manual barcode entry */}
             <View style={styles.manualRow}>
               <TextInput
                 style={styles.manualInput}
@@ -510,7 +534,6 @@ export default function HomeScreen() {
               </Pressable>
             </View>
 
-            {/* Trust line */}
             <View style={styles.trustRow}>
               <View style={styles.trustDot} />
               <Text style={styles.trustTxt}>
@@ -561,6 +584,18 @@ export default function HomeScreen() {
                 </View>
               )}
             </Pressable>
+            <View style={styles.menuDivider} />
+            <View style={styles.menuSoundRow}>
+              <Text style={styles.menuEmoji}>🔔</Text>
+              <Text style={[styles.menuTxt, { flex: 1 }]}>Vibrations</Text>
+              <Switch
+                value={soundEnabled}
+                onValueChange={setSoundEnabled}
+                trackColor={{ false: "rgba(255,255,255,0.12)", true: C.gold + "80" }}
+                thumbColor={soundEnabled ? C.gold : "rgba(255,255,255,0.5)"}
+                ios_backgroundColor="rgba(255,255,255,0.12)"
+              />
+            </View>
           </View>
         </View>
       )}
@@ -568,28 +603,10 @@ export default function HomeScreen() {
   );
 }
 
-function NavBtn({ emoji, onPress, badge }: { emoji: string; onPress: () => void; badge?: number }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      android_ripple={{ color: "rgba(255,255,255,0.12)", borderless: true, radius: 24 }}
-      style={styles.navBtn}
-    >
-      <Text style={styles.navBtnEmoji}>{emoji}</Text>
-      {!!badge && badge > 0 && (
-        <View style={styles.navBadge}>
-          <Text style={styles.navBadgeTxt}>{badge > 99 ? "99+" : badge}</Text>
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
 
-  // offline
   offlineBanner: {
     flexDirection: "row", alignItems: "center", gap: 8,
     paddingHorizontal: 16, paddingBottom: 8,
@@ -597,190 +614,139 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "rgba(232,146,26,0.3)",
   },
   offlineDot: { width: 7, height: 7, borderRadius: 4 },
-  offlineLabel: { flex: 1, fontSize: 13, fontWeight: "600" },
-  offlineSync: { fontSize: 20, fontWeight: "700" },
+  offlineLabel: { flex: 1, fontSize: 12, fontWeight: "600" },
+  offlineSync: { fontSize: 18, fontWeight: "700" },
 
-  // header
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 16, paddingBottom: 10,
-    backgroundColor: "rgba(6,13,9,0.88)",
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 10 },
   brandMark: {
-    width: 40, height: 40, borderRadius: 11,
-    backgroundColor: "rgba(26,175,90,0.18)",
-    borderWidth: 1, borderColor: "rgba(26,175,90,0.38)",
+    width: 38, height: 38, borderRadius: 10, backgroundColor: C.gold,
     alignItems: "center", justifyContent: "center",
   },
-  brandMarkTxt: { fontSize: 13, fontWeight: "900", color: C.halalLight, letterSpacing: 0.3 },
-  brandName: { fontSize: 24, fontWeight: "900", lineHeight: 28 },
-  brandSub: { fontSize: 10.5, color: C.textMuted, fontWeight: "500", marginTop: 1 },
-  headerBtns: { flexDirection: "row", gap: 6 },
-  navBtn: {
-    width: 46, height: 46, borderRadius: 13,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.13)",
-    alignItems: "center", justifyContent: "center", position: "relative",
-  },
-  navBtnEmoji: { fontSize: 22 },
-  navBadge: {
-    position: "absolute", top: -4, right: -4,
-    backgroundColor: C.haram, borderRadius: 8,
-    minWidth: 17, height: 17,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
-  },
-  navBadgeTxt: { fontSize: 9, fontWeight: "900", color: "#FFF" },
-
-  // hamburger menu
+  brandMarkTxt: { fontSize: 14, fontWeight: "900", color: C.bg },
+  brandName: { fontSize: 22, fontWeight: "900", letterSpacing: -0.3 },
+  brandSub: { fontSize: 10, color: C.textMuted, marginTop: 1 },
   hamburgerBtn: {
-    width: 46, height: 46, borderRadius: 13,
+    width: 40, height: 40, borderRadius: 10,
     backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.13)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.12)",
     alignItems: "center", justifyContent: "center",
   },
-  hamburgerIcon: { fontSize: 22, color: C.gold, fontWeight: "700" },
-  menuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "transparent" } as object,
+  hamburgerIcon: { fontSize: 17, color: C.text, fontWeight: "700" },
+
+  cameraArea: { flex: 1, backgroundColor: "#000" },
+  noCamBg: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(6,13,9,0.95)" },
+
+  frameWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center", justifyContent: "center",
+  },
+  frameBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1, borderColor: C.gold, borderRadius: 12,
+  },
+  corner: {
+    position: "absolute", width: CORNER, height: CORNER,
+    borderColor: C.gold,
+    shadowColor: C.gold, shadowOffset: { width: 0, height: 0 }, shadowRadius: 6,
+  },
+  cTL: { top: 0, left: 0, borderTopWidth: CT, borderLeftWidth: CT, borderTopLeftRadius: 12 },
+  cTR: { top: 0, right: 0, borderTopWidth: CT, borderRightWidth: CT, borderTopRightRadius: 12 },
+  cBL: { bottom: 0, left: 0, borderBottomWidth: CT, borderLeftWidth: CT, borderBottomLeftRadius: 12 },
+  cBR: { bottom: 0, right: 0, borderBottomWidth: CT, borderRightWidth: CT, borderBottomRightRadius: 12 },
+  centerDot: {
+    position: "absolute", width: 5, height: 5, borderRadius: 3,
+    backgroundColor: C.gold, opacity: 0.7,
+    top: "50%", left: "50%", marginTop: -2.5, marginLeft: -2.5,
+  },
+  scanLine: { height: 2.5, borderRadius: 2 },
+  frameStatus: {
+    position: "absolute", bottom: -32,
+    fontSize: 12, color: "rgba(255,255,255,0.72)",
+    fontWeight: "600", textAlign: "center",
+  },
+  noCamMsg: { alignItems: "center", gap: 10 },
+  noCamIcon: { fontSize: 44 },
+  noCamTxt: { fontSize: 18, fontWeight: "800", color: C.text },
+  noCamSub: { fontSize: 13, color: C.textSub, textAlign: "center", maxWidth: 260 },
+  noCamBtn: {
+    marginTop: 8, paddingHorizontal: 22, paddingVertical: 12,
+    backgroundColor: C.gold, borderRadius: 12,
+  },
+  noCamBtnTxt: { fontSize: 15, fontWeight: "700", color: C.bg },
+
+  bottomPanel: {
+    backgroundColor: C.surface,
+    paddingHorizontal: 16, paddingTop: 18, gap: 12,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border,
+  },
+  loadingBox: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 32, gap: 12 },
+  loadingTxt: { fontSize: 17, fontWeight: "700", color: C.text },
+  loadingSub: { fontSize: 13, color: C.textMuted },
+
+  mainBtn: { width: "100%", borderRadius: 14, overflow: "hidden" },
+  mainBtnGrad: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, gap: 10 },
+  mainBtnIcon: { fontSize: 20 },
+  mainBtnTxt: { fontSize: 15, fontWeight: "900", color: "#fff", letterSpacing: 0.8 },
+
+  secondaryRow: { flexDirection: "row", gap: 0 },
+  secBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+  },
+  secBtnActive: { borderColor: C.gold + "50", backgroundColor: C.gold + "12" },
+  secBtnEmoji: { fontSize: 16 },
+  secBtnTxt: { fontSize: 13, fontWeight: "600", color: C.textSub },
+  secDivider: { width: 8 },
+
+  manualRow: { flexDirection: "row", gap: 8 },
+  manualInput: {
+    flex: 1, height: 44, borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    paddingHorizontal: 12,
+    fontSize: 14, color: C.text,
+  },
+  manualBtn: {
+    width: 52, height: 44, borderRadius: 10,
+    backgroundColor: C.gold, alignItems: "center", justifyContent: "center",
+  },
+  manualBtnTxt: { fontSize: 14, fontWeight: "800", color: C.bg },
+
+  trustRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  trustDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.halalLight, opacity: 0.7 },
+  trustTxt: { fontSize: 11, color: C.textMuted },
+
+  menuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
   menuPanel: {
     position: "absolute",
     backgroundColor: C.surface,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
-    paddingVertical: 8,
-    minWidth: 200,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45, shadowRadius: 24,
-    elevation: 16,
-  },
-  menuItem: {
-    flexDirection: "row", alignItems: "center", gap: 12,
-    paddingVertical: 12, paddingHorizontal: 16,
-  },
-  menuEmoji: { fontSize: 20 },
-  menuTxt: { fontSize: 15, fontWeight: "700", color: C.textSub },
-  menuBadge: {
-    backgroundColor: C.haram, borderRadius: 8,
-    minWidth: 17, height: 17,
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
-    marginLeft: "auto",
-  },
-  menuBadgeTxt: { fontSize: 9, fontWeight: "900", color: "#FFF" },
-
-  // camera area
-  cameraArea: {
-    flex: 1,
-    overflow: "hidden",
-    backgroundColor: "#000",
-  },
-  frameWrap: {
-    position: "absolute", top: 0, bottom: 0, left: 0, right: 0,
-    alignItems: "center", justifyContent: "center", gap: 16,
-    pointerEvents: "none",
-  } as unknown as object,
-  frameBorder: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    borderWidth: 1.5, borderColor: C.gold, borderRadius: 8,
-  },
-  corner: {
-    position: "absolute",
-    width: CORNER, height: CORNER,
-    borderColor: C.gold, borderWidth: CT,
-    shadowColor: C.gold, shadowOffset: { width: 0, height: 0 }, shadowRadius: 8,
-  },
-  cTL: { top: -2, left: -2, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 7 },
-  cTR: { top: -2, right: -2, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 7 },
-  cBL: { bottom: -2, left: -2, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 7 },
-  cBR: { bottom: -2, right: -2, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 7 },
-  centerDot: {
-    position: "absolute",
-    top: "50%", left: "50%",
-    width: 5, height: 5, borderRadius: 3,
-    backgroundColor: "rgba(200,150,60,0.45)",
-    transform: [{ translateX: -2.5 }, { translateY: -2.5 }],
-  },
-  scanLine: {
-    height: 2.5, borderRadius: 1.5,
-    shadowColor: C.gold, shadowOpacity: 1, shadowRadius: 6, shadowOffset: { width: 0, height: 0 },
-  },
-  frameStatus: {
-    fontSize: 14, color: "rgba(255,255,255,0.55)",
-    fontWeight: "600", textAlign: "center", letterSpacing: 0.3,
-  },
-
-  // bottom panel
-  bottomPanel: {
-    backgroundColor: C.surface,
-    borderTopWidth: StyleSheet.hairlineWidth * 2,
-    borderTopColor: C.border,
-    paddingHorizontal: 20, paddingTop: 20, gap: 14,
-    alignItems: "center",
-  },
-  loadingBox: { alignItems: "center", paddingVertical: 26, gap: 12 },
-  loadingTxt: { fontSize: 18, fontWeight: "900", color: C.gold, letterSpacing: 2 },
-  loadingSub: { fontSize: 13, color: C.textMuted, fontWeight: "500" },
-
-  mainBtn: {
-    width: "100%", borderRadius: 20, overflow: "hidden",
-    shadowColor: C.gold, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.35, shadowRadius: 20,
+    borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    minWidth: 200, overflow: "hidden",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12,
     elevation: 10,
   },
-  mainBtnGrad: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    paddingVertical: 22, gap: 12, borderRadius: 20,
+  menuItem: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingVertical: 13, paddingHorizontal: 16,
   },
-  mainBtnIcon: { fontSize: 30 },
-  mainBtnTxt: { fontSize: 21, fontWeight: "900", color: C.bg, letterSpacing: 1 },
-
-  secondaryRow: {
-    flexDirection: "row", alignItems: "center",
-    width: "100%", gap: 0,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
-    borderRadius: 16, overflow: "hidden",
+  menuEmoji: { fontSize: 18 },
+  menuTxt: { fontSize: 15, fontWeight: "600", color: C.text },
+  menuBadge: {
+    backgroundColor: C.gold, borderRadius: 10,
+    paddingHorizontal: 7, paddingVertical: 2, marginLeft: "auto",
   },
-  secBtn: {
-    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 8, paddingVertical: 14,
-    backgroundColor: C.surfaceHigh,
+  menuBadgeTxt: { fontSize: 11, fontWeight: "800", color: C.bg },
+  menuDivider: {
+    height: StyleSheet.hairlineWidth, backgroundColor: C.border, marginHorizontal: 12,
   },
-  secBtnActive: { backgroundColor: "rgba(200,150,60,0.12)" },
-  secDivider: { width: StyleSheet.hairlineWidth, height: 32, backgroundColor: C.border },
-  secBtnEmoji: { fontSize: 20 },
-  secBtnTxt: { fontSize: 15, fontWeight: "700", color: C.textSub },
-
-  trustRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  trustDot: { width: 4.5, height: 4.5, borderRadius: 3, backgroundColor: C.halalLight },
-  trustTxt: { fontSize: 11, color: C.textMuted, fontWeight: "500", textAlign: "center" },
-
-  // no-camera state
-  noCamBg: { ...StyleSheet.absoluteFillObject, backgroundColor: "#05100A" } as object,
-  noCamMsg: { alignItems: "center", gap: 12, paddingHorizontal: 32 },
-  noCamIcon: { fontSize: 52 },
-  noCamTxt: { fontSize: 20, fontWeight: "800", color: "rgba(255,255,255,0.55)", textAlign: "center" },
-  noCamSub: { fontSize: 14, color: "rgba(255,255,255,0.32)", textAlign: "center", lineHeight: 22 },
-  noCamBtn: {
-    marginTop: 6, borderRadius: 14, overflow: "hidden",
-    backgroundColor: "rgba(200,150,60,0.18)",
-    borderWidth: 1, borderColor: "rgba(200,150,60,0.35)",
-    paddingVertical: 12, paddingHorizontal: 24,
+  menuSoundRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingVertical: 10, paddingHorizontal: 16,
   },
-  noCamBtnTxt: { fontSize: 15, fontWeight: "700", color: C.gold },
-
-  // manual barcode entry
-  manualRow: {
-    flexDirection: "row", width: "100%", gap: 10, alignItems: "center",
-  },
-  manualInput: {
-    flex: 1, height: 50, borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
-    paddingHorizontal: 16, fontSize: 15,
-    color: C.text,
-  },
-  manualBtn: {
-    height: 50, paddingHorizontal: 20, borderRadius: 14,
-    backgroundColor: "rgba(200,150,60,0.20)",
-    borderWidth: 1, borderColor: "rgba(200,150,60,0.40)",
-    alignItems: "center", justifyContent: "center",
-  },
-  manualBtnTxt: { fontSize: 15, fontWeight: "800", color: C.gold },
 });

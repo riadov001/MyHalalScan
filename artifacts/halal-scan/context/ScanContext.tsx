@@ -9,10 +9,11 @@ import React, {
 } from "react";
 import { AppState } from "react-native";
 
-import { localDb, type Product, type ScanResult } from "@/lib/db";
+import { localDb, type CustomIngredient, type Product, type ScanResult } from "@/lib/db";
 
 export type { ScanResult };
 export type CachedProduct = Product;
+export type { CustomIngredient };
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const MAX_RETRIES = 3;
@@ -22,6 +23,8 @@ interface ScanContextType {
   pendingBarcodes: string[];
   isOnline: boolean;
   isDbReady: boolean;
+  soundEnabled: boolean;
+  customIngredients: CustomIngredient[];
   addProduct: (p: Product) => Promise<void>;
   queueOfflineScan: (barcode: string) => Promise<void>;
   whitelistProduct: (barcode: string) => Promise<void>;
@@ -29,28 +32,69 @@ interface ScanContextType {
   getProduct: (barcode: string) => Product | null;
   isWhitelisted: (barcode: string) => boolean;
   processPendingQueue: () => Promise<void>;
+  setSoundEnabled: (v: boolean) => Promise<void>;
+  addCustomIngredient: (term: string) => Promise<void>;
+  removeCustomIngredient: (id: number) => Promise<void>;
 }
 
 const ScanContext = createContext<ScanContextType | null>(null);
+
+/** Word-boundary check (same logic as API server) */
+function containsTerm(haystack: string, term: string): boolean {
+  const normalised = term
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalised) return false;
+  const escaped = normalised.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "i");
+  return pattern.test(haystack);
+}
+
+export function checkCustomIngredients(
+  ingredientsText: string,
+  customIngredients: CustomIngredient[],
+): string | null {
+  if (!ingredientsText || customIngredients.length === 0) return null;
+  const norm = ingredientsText
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+  for (const ci of customIngredients) {
+    if (containsTerm(norm, ci.term)) return ci.term;
+  }
+  return null;
+}
 
 export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Record<string, Product>>({});
   const [pendingBarcodes, setPendingBarcodes] = useState<string[]>([]);
   const [isOnline, setIsOnline] = useState(true);
   const [isDbReady, setIsDbReady] = useState(false);
+  const [soundEnabled, setSoundEnabledState] = useState(true);
+  const [customIngredients, setCustomIngredients] = useState<CustomIngredient[]>([]);
   const processingRef = useRef(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [allProducts, allPending] = await Promise.all([
+        const [allProducts, allPending, soundVal, customs] = await Promise.all([
           localDb.getAllProducts(),
           localDb.getAllPending(),
+          localDb.getSetting("sound_enabled"),
+          localDb.getAllCustomIngredients(),
         ]);
         const map: Record<string, Product> = {};
         for (const p of allProducts) map[p.barcode] = p;
         setProducts(map);
         setPendingBarcodes(allPending.map((p) => p.barcode));
+        setSoundEnabledState(soundVal === null ? true : soundVal === "1");
+        setCustomIngredients(customs);
       } catch {
       } finally {
         setIsDbReady(true);
@@ -166,13 +210,33 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
 
   const getProduct = useCallback(
     (barcode: string): Product | null => products[barcode] ?? null,
-    [products]
+    [products],
   );
 
   const isWhitelisted = useCallback(
     (barcode: string): boolean => products[barcode]?.isWhitelisted ?? false,
-    [products]
+    [products],
   );
+
+  const setSoundEnabled = useCallback(async (v: boolean) => {
+    setSoundEnabledState(v);
+    await localDb.setSetting("sound_enabled", v ? "1" : "0");
+  }, []);
+
+  const addCustomIngredient = useCallback(async (term: string) => {
+    const trimmed = term.trim().slice(0, 60);
+    if (!trimmed) return;
+    const created = await localDb.addCustomIngredient(trimmed);
+    setCustomIngredients((prev) => {
+      if (prev.some((c) => c.id === created.id)) return prev;
+      return [...prev, created];
+    });
+  }, []);
+
+  const removeCustomIngredient = useCallback(async (id: number) => {
+    await localDb.removeCustomIngredient(id);
+    setCustomIngredients((prev) => prev.filter((c) => c.id !== id));
+  }, []);
 
   return (
     <ScanContext.Provider
@@ -181,6 +245,8 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         pendingBarcodes,
         isOnline,
         isDbReady,
+        soundEnabled,
+        customIngredients,
         addProduct,
         queueOfflineScan,
         whitelistProduct,
@@ -188,6 +254,9 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         getProduct,
         isWhitelisted,
         processPendingQueue,
+        setSoundEnabled,
+        addCustomIngredient,
+        removeCustomIngredient,
       }}
     >
       {children}

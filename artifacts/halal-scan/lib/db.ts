@@ -20,10 +20,18 @@ export interface PendingScan {
   retryCount: number;
 }
 
+export interface CustomIngredient {
+  id: number;
+  term: string;
+}
+
 // ─── In-memory fallback (web / test environments) ────────────────────────────
 
 let _memProducts: Record<string, Product> = {};
 let _memPending: Record<string, PendingScan> = {};
+let _memSettings: Record<string, string> = {};
+let _memCustom: CustomIngredient[] = [];
+let _memCustomNextId = 1;
 
 const memDb = {
   async getAllProducts(): Promise<Product[]> {
@@ -54,6 +62,23 @@ const memDb = {
   },
   async incrementPendingRetry(barcode: string): Promise<void> {
     if (_memPending[barcode]) _memPending[barcode].retryCount++;
+  },
+  async getSetting(key: string): Promise<string | null> {
+    return _memSettings[key] ?? null;
+  },
+  async setSetting(key: string, value: string): Promise<void> {
+    _memSettings[key] = value;
+  },
+  async getAllCustomIngredients(): Promise<CustomIngredient[]> {
+    return [..._memCustom];
+  },
+  async addCustomIngredient(term: string): Promise<CustomIngredient> {
+    const item: CustomIngredient = { id: _memCustomNextId++, term };
+    _memCustom.push(item);
+    return item;
+  },
+  async removeCustomIngredient(id: number): Promise<void> {
+    _memCustom = _memCustom.filter((c) => c.id !== id);
   },
 };
 
@@ -89,10 +114,17 @@ async function initDb(): Promise<void> {
           timestamp INTEGER NOT NULL,
           retryCount INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS custom_ingredients (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          term TEXT NOT NULL UNIQUE
+        );
       `);
       _dbReady = true;
     } catch (e) {
-      // SQLite unavailable (e.g. web) — fall back to in-memory
       _db = null;
     }
   })();
@@ -221,14 +253,79 @@ const sqliteDb = {
       await memDb.incrementPendingRetry(barcode);
     }
   },
+
+  async getSetting(key: string): Promise<string | null> {
+    const db = await getDb();
+    if (!db) return memDb.getSetting(key);
+    try {
+      const row = await db.getFirstAsync<{ value: string }>(
+        "SELECT value FROM app_settings WHERE key = ?", key,
+      );
+      return row?.value ?? null;
+    } catch {
+      return memDb.getSetting(key);
+    }
+  },
+
+  async setSetting(key: string, value: string): Promise<void> {
+    const db = await getDb();
+    if (!db) { await memDb.setSetting(key, value); return; }
+    try {
+      await db.runAsync(
+        "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+        key, value,
+      );
+    } catch {
+      await memDb.setSetting(key, value);
+    }
+  },
+
+  async getAllCustomIngredients(): Promise<CustomIngredient[]> {
+    const db = await getDb();
+    if (!db) return memDb.getAllCustomIngredients();
+    try {
+      return await db.getAllAsync<CustomIngredient>(
+        "SELECT id, term FROM custom_ingredients ORDER BY id ASC",
+      );
+    } catch {
+      return memDb.getAllCustomIngredients();
+    }
+  },
+
+  async addCustomIngredient(term: string): Promise<CustomIngredient> {
+    const db = await getDb();
+    if (!db) return memDb.addCustomIngredient(term);
+    try {
+      const res = await db.runAsync(
+        "INSERT OR IGNORE INTO custom_ingredients (term) VALUES (?)", term,
+      );
+      if (res.lastInsertRowId) {
+        return { id: res.lastInsertRowId, term };
+      }
+      const existing = await db.getFirstAsync<CustomIngredient>(
+        "SELECT id, term FROM custom_ingredients WHERE term = ?", term,
+      );
+      return existing ?? { id: -1, term };
+    } catch {
+      return memDb.addCustomIngredient(term);
+    }
+  },
+
+  async removeCustomIngredient(id: number): Promise<void> {
+    const db = await getDb();
+    if (!db) { await memDb.removeCustomIngredient(id); return; }
+    try {
+      await db.runAsync("DELETE FROM custom_ingredients WHERE id = ?", id);
+    } catch {
+      await memDb.removeCustomIngredient(id);
+    }
+  },
 };
 
 // ─── exported singleton ────────────────────────────────────────────────────────
-// Use SQLite on native, in-memory fallback on web
 
 export const localDb = Platform.OS === "web" ? memDb : sqliteDb;
 
-// Kick off DB init immediately (non-blocking, best-effort)
 if (Platform.OS !== "web") {
   initDb().catch(() => {});
 }
