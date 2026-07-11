@@ -34,6 +34,7 @@ import C from "@/constants/colors";
 import { checkCustomIngredients, type ScanResult, useScanContext } from "@/context/ScanContext";
 import { analyzeImageWithOCR, type ImageOCRResult } from "@/lib/pollinations";
 import type { Product } from "@/lib/db";
+import { uploadPhotoToStorage } from "@/lib/storage";
 
 const { width: W } = Dimensions.get("window");
 const FRAME_W = Math.min(W * 0.82, 300);
@@ -70,6 +71,7 @@ export default function HomeScreen() {
   const scanningRef = useRef(false);
   const autoStartedRef = useRef(false);
   const cameraViewRef = useRef<CameraView>(null);
+  const pendingPhotoUpload = useRef<Promise<string | null> | null>(null);
 
   const {
     addProduct, queueOfflineScan, whitelistProduct,
@@ -197,10 +199,16 @@ export default function HomeScreen() {
         finalReason = `Ingrédient personnalisé détecté : "${customHit}"`;
       }
 
+      const photoPath = pendingPhotoUpload.current
+        ? await pendingPhotoUpload.current.catch(() => null)
+        : null;
+      pendingPhotoUpload.current = null;
+
       const product: Product = {
         barcode, result: finalResult, productName: json.productName, timestamp: Date.now(),
         reason: finalReason, ingredientsText: json.ingredientsText,
         ingredientsList: json.ingredientsList, isWhitelisted: false,
+        photoPath: photoPath ?? undefined,
       };
       await addProduct(product);
       setScanResult({
@@ -241,13 +249,13 @@ export default function HomeScreen() {
   }, []);
 
   // ── Process OCR result from Pollinations vision ───────────────────────────
-  const processOCRResult = useCallback((ocr: ImageOCRResult) => {
-    loadingRef.current = false;
-    setLoading(false);
+  const processOCRResult = useCallback(async (ocr: ImageOCRResult) => {
     lastBarcode.current = null;
     cooldown.current = false;
 
     if (!ocr.productName && !ocr.ingredients && !ocr.halalVerdict) {
+      loadingRef.current = false;
+      setLoading(false);
       Alert.alert(
         "Produit non identifié",
         "L'IA n'a pas pu lire les informations de ce produit.\n\nConseils :\n• Photographiez l'étiquette avec la liste d'ingrédients\n• Assurez-vous que le texte est net et bien éclairé\n• Évitez les reflets et le flou",
@@ -255,14 +263,35 @@ export default function HomeScreen() {
       return;
     }
 
-    setScanResult({
+    const photoPath = pendingPhotoUpload.current
+      ? await pendingPhotoUpload.current.catch(() => null)
+      : null;
+    pendingPhotoUpload.current = null;
+
+    loadingRef.current = false;
+    setLoading(false);
+
+    const barcode = `IA-OCR-${Date.now()}`;
+    const product: Product = {
+      barcode,
       result: ocr.halalVerdict?.result ?? "unknown",
       productName: ocr.productName ?? "Produit analysé par IA",
-      barcode: ocr.barcode ?? "IA-OCR",
+      timestamp: Date.now(),
       reason: ocr.halalVerdict?.reason ?? "Analyse visuelle IA · Pollinations",
       ingredientsText: ocr.ingredients ?? undefined,
+      isWhitelisted: false,
+      photoPath: photoPath ?? undefined,
+    };
+    await addProduct(product).catch(() => {});
+
+    setScanResult({
+      result: product.result,
+      productName: product.productName,
+      barcode,
+      reason: product.reason,
+      ingredientsText: product.ingredientsText,
     });
-  }, []);
+  }, [addProduct]);
 
   // ── Barcode scan → OCR fallback (helper partagé) ──────────────────────────
   const tryBarcodeOrOCR = useCallback(async (
@@ -293,6 +322,9 @@ export default function HomeScreen() {
 
     try {
       const b64 = await getBase64();
+      if (!pendingPhotoUpload.current) {
+        pendingPhotoUpload.current = uploadPhotoToStorage(b64, "image/jpeg");
+      }
       const ocr = await analyzeImageWithOCR(b64);
 
       if (ocr?.barcode) {
@@ -306,7 +338,7 @@ export default function HomeScreen() {
       }
 
       if (ocr) {
-        processOCRResult(ocr);
+        await processOCRResult(ocr);
       } else {
         loadingRef.current = false;
         setLoading(false);
@@ -336,6 +368,9 @@ export default function HomeScreen() {
         loadingRef.current = false;
         setLoading(false);
         if (photo?.uri) {
+          if (photo.base64) {
+            pendingPhotoUpload.current = uploadPhotoToStorage(photo.base64, "image/jpeg");
+          }
           await tryBarcodeOrOCR(
             photo.uri,
             async () => photo.base64 ?? await blobToBase64(photo.uri),
@@ -396,6 +431,10 @@ export default function HomeScreen() {
       const uri = asset.uri.startsWith("file://") ? asset.uri : `file://${asset.uri}`;
       const b64 = asset.base64 ?? "";
 
+      if (b64) {
+        pendingPhotoUpload.current = uploadPhotoToStorage(b64, "image/jpeg");
+      }
+
       // iOS : Camera.scanFromURLAsync peu fiable → OCR direct
       await tryBarcodeOrOCR(uri, async () => b64, Platform.OS === "ios");
     } catch {
@@ -410,6 +449,7 @@ export default function HomeScreen() {
     lastBarcode.current = null;
     cooldown.current = false;
     autoStartedRef.current = false;
+    pendingPhotoUpload.current = null;
   }, []);
 
 

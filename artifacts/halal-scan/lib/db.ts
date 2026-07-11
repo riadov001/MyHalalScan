@@ -12,6 +12,7 @@ export interface Product {
   ingredientsText?: string;
   ingredientsList?: string[];
   isWhitelisted: boolean;
+  photoPath?: string;
 }
 
 export interface PendingScan {
@@ -123,6 +124,9 @@ async function initDb(): Promise<void> {
           term TEXT NOT NULL UNIQUE
         );
       `);
+      try {
+        await _db.execAsync("ALTER TABLE products ADD COLUMN photo_path TEXT");
+      } catch { /* column already exists */ }
       _dbReady = true;
     } catch (e) {
       _db = null;
@@ -146,7 +150,7 @@ const sqliteDb = {
         barcode: string; result: string; productName: string;
         timestamp: number; reason: string | null;
         ingredientsText: string | null; ingredientsList: string | null;
-        isWhitelisted: number;
+        isWhitelisted: number; photo_path: string | null;
       }>("SELECT * FROM products ORDER BY timestamp DESC");
       return rows.map((r) => ({
         barcode: r.barcode,
@@ -157,6 +161,7 @@ const sqliteDb = {
         ingredientsText: r.ingredientsText ?? undefined,
         ingredientsList: r.ingredientsList ? JSON.parse(r.ingredientsList) as string[] : undefined,
         isWhitelisted: r.isWhitelisted === 1,
+        photoPath: r.photo_path ?? undefined,
       }));
     } catch {
       return memDb.getAllProducts();
@@ -169,13 +174,14 @@ const sqliteDb = {
     try {
       await db.runAsync(
         `INSERT OR REPLACE INTO products
-          (barcode, result, productName, timestamp, reason, ingredientsText, ingredientsList, isWhitelisted)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (barcode, result, productName, timestamp, reason, ingredientsText, ingredientsList, isWhitelisted, photo_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         p.barcode, p.result, p.productName, p.timestamp,
         p.reason ?? null,
         p.ingredientsText ?? null,
         p.ingredientsList ? JSON.stringify(p.ingredientsList) : null,
         p.isWhitelisted ? 1 : 0,
+        p.photoPath ?? null,
       );
     } catch {
       await memDb.upsertProduct(p);

@@ -11,6 +11,7 @@ export interface Product {
   ingredientsText?: string;
   ingredientsList?: string[];
   isWhitelisted: boolean;
+  photoPath?: string;
 }
 
 export interface PendingScan {
@@ -42,13 +43,16 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       retry_count INTEGER NOT NULL DEFAULT 0
     );
   `);
+  try {
+    await _db.execAsync("ALTER TABLE products ADD COLUMN photo_path TEXT");
+  } catch { /* column already exists */ }
   return _db;
 }
 
 type ProductRow = {
   barcode: string; result: string; product_name: string; timestamp: number;
   reason: string | null; ingredients_text: string | null;
-  ingredients_list: string | null; is_whitelisted: number;
+  ingredients_list: string | null; is_whitelisted: number; photo_path: string | null;
 };
 
 function rowToProduct(r: ProductRow): Product {
@@ -58,6 +62,7 @@ function rowToProduct(r: ProductRow): Product {
     reason: r.reason ?? undefined, ingredientsText: r.ingredients_text ?? undefined,
     ingredientsList: r.ingredients_list ? (JSON.parse(r.ingredients_list) as string[]) : undefined,
     isWhitelisted: r.is_whitelisted === 1,
+    photoPath: r.photo_path ?? undefined,
   };
 }
 
@@ -69,9 +74,10 @@ export const localDb = {
   async upsertProduct(p: Product): Promise<void> {
     const db = await getDb();
     await db.runAsync(
-      `INSERT OR REPLACE INTO products (barcode,result,product_name,timestamp,reason,ingredients_text,ingredients_list,is_whitelisted) VALUES (?,?,?,?,?,?,?,?)`,
+      `INSERT OR REPLACE INTO products (barcode,result,product_name,timestamp,reason,ingredients_text,ingredients_list,is_whitelisted,photo_path) VALUES (?,?,?,?,?,?,?,?,?)`,
       [p.barcode, p.result, p.productName, p.timestamp, p.reason ?? null, p.ingredientsText ?? null,
-       p.ingredientsList ? JSON.stringify(p.ingredientsList) : null, p.isWhitelisted ? 1 : 0]
+       p.ingredientsList ? JSON.stringify(p.ingredientsList) : null, p.isWhitelisted ? 1 : 0,
+       p.photoPath ?? null]
     );
   },
   async whitelistProduct(barcode: string): Promise<void> {

@@ -5,6 +5,7 @@ import React, { useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -16,6 +17,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import C from "@/constants/colors";
 import { useScanContext } from "@/context/ScanContext";
 import type { Product } from "@/lib/db";
+
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : "";
 
 type Filter = "all" | "halal" | "haram" | "warning" | "unknown";
 
@@ -53,12 +58,20 @@ function ProductCard({ item, isWL }: { item: Product; isWL: boolean }) {
         android_ripple={{ color: "rgba(255,255,255,0.06)" }}
         style={styles.cardBody}
       >
-        <Text style={styles.cardIcon}>{s.icon}</Text>
+        {item.photoPath && API_BASE ? (
+          <Image
+            source={{ uri: `${API_BASE}/api/storage${item.photoPath}` }}
+            style={[styles.cardThumbnail, { borderColor: s.border + "40" }]}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={styles.cardIcon}>{s.icon}</Text>
+        )}
         <View style={styles.cardInfo}>
           <Text style={styles.cardName} numberOfLines={2}>{item.productName}</Text>
           {!!item.reason && <Text style={[styles.cardReason, { color: s.border }]} numberOfLines={1}>{item.reason}</Text>}
           <View style={styles.cardMeta}>
-            <Text style={styles.cardBarcode}>{item.barcode}</Text>
+            <Text style={styles.cardBarcode}>{item.barcode.startsWith("IA-OCR") ? "IA · Analyse visuelle" : item.barcode}</Text>
             <Text style={styles.cardDot}>·</Text>
             <Text style={styles.cardTime}>{timeAgo(item.timestamp)}</Text>
           </View>
@@ -263,6 +276,11 @@ const styles = StyleSheet.create({
   },
   cardBody: { flexDirection: "row", alignItems: "center", padding: 14, gap: 12 },
   cardIcon: { fontSize: 32, lineHeight: 40 },
+  cardThumbnail: {
+    width: 44, height: 44, borderRadius: 8,
+    borderWidth: 1, overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
   cardInfo: { flex: 1, gap: 3 },
   cardName: { fontSize: 16, fontWeight: "700", color: C.text, lineHeight: 22 },
   cardReason: { fontSize: 12, fontWeight: "600", opacity: 0.9 },
