@@ -93,6 +93,13 @@ export default function HomeScreen() {
     );
   }, []);
 
+  // Request camera permission automatically on first load (web + native)
+  useEffect(() => {
+    if (permission && !permission.granted && permission.canAskAgain) {
+      requestPermission();
+    }
+  }, [permission?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-start scanning as soon as camera permission is confirmed
   useEffect(() => {
     if (permission?.granted && !autoStartedRef.current && !scanResult) {
