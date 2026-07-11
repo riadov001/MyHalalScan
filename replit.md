@@ -1,6 +1,6 @@
-# [Project name]
+# HalalScan
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A mobile barcode scanner app that checks whether food products are halal, backed by an Express API server with PostgreSQL.
 
 ## Run & Operate
 

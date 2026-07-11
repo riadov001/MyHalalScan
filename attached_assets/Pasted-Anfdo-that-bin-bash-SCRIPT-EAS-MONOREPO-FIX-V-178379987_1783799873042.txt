@@ -1,0 +1,103 @@
+Anfdo that
+#!/bin/bash
+# =============================================
+# SCRIPT EAS MONOREPO FIX - Version avec tes infos
+# Expo username: myjantesmob
+# Project ID: bc97437c-249d-4832-b9a1-434574f90993
+# =============================================
+
+echo "🚀 Début de la configuration EAS + correction du projet monorepo..."
+
+# 1. Déplacement de l'app Expo
+echo "📁 Déplacement de l'app vers le repo root..."
+mv artifacts/halal-scan/* . 2>/dev/null || true
+rmdir artifacts/halal-scan 2>/dev/null || true
+
+# 2. .easignore
+echo "📄 Création du .easignore..."
+mkdir -p .easignore 2>/dev/null || true
+cat > .easignore << 'EOF'
+artifacts/
+node_modules/
+pnpm-lock.yaml*
+**/.git
+**/.easignore
+**/.gitignore
+dist/
+build/
+*.log
+EOF
+
+# 3. Mise à jour owner + projectId Expo (avec tes infos)
+echo "🔑 Mise à jour de ton projet Expo (owner + projectId)..."
+echo "⚠️  Mise à jour en cours avec :"
+echo "   Username : myjantesmob"
+echo "   Project ID : bc97437c-249d-4832-b9a1-434574f90993"
+
+# Nettoyage ancien .git (problème classique)
+rm -rf .git 2>/dev/null || true
+
+# Installation des outils
+echo "📦 Installation des outils EAS..."
+npm install -g eas-cli 2>/dev/null || echo "✅ EAS CLI déjà installé ou mise à jour"
+npm install 2>/dev/null || echo "✅ Paquets installés"
+
+# Configuration EAS avec tes infos
+echo "🛠️  Initialisation / mise à jour du projet EAS..."
+eas init --id="bc97437c-249d-4832-b9a1-434574f90993" --username="myjantesmob" --non-interactive || echo "🔄 EAS init déjà fait ou erreur mineure"
+
+echo "✅ Project ID et owner mis à jour avec succès !"
+
+# 4. Création du fichier eas.json (profils EAS)
+echo "📋 Création du fichier eas.json avec tes profils..."
+cat > eas.json << 'EOF'
+{
+  "cli": { "version": ">= 11.0.0" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "autoIncrement": true,
+      "android": { "buildType": "apk" },
+      "node": "20.18.3",
+      "pnpm": "10.28.2"
+    },
+    "preview": {
+      "autoIncrement": true,
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "node": "20.18.3",
+      "pnpm": "10.28.2"
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": { "buildType": "app-bundle" },
+      "node": "20.18.3",
+      "pnpm": "10.28.2"
+    }
+  }
+}
+EOF
+
+echo "🎉 CONFIGURATION TERMINÉE !"
+
+echo ""
+echo "=== QUE FAIRE MAINTENANT ==="
+echo "1. Exécute :"
+echo "   eas build --platform android --profile production --non-interactive"
+echo "   (ou --profile preview pour tester d'abord)"
+echo ""
+echo "2. Si tu veux un build local :"
+echo "   eas build -p android --profile development --local"
+echo ""
+echo "3. Pour voir l'état de ton projet : eas whoami"
+echo ""
+echo "💡 Si du tout tu as encore une erreur, copie-colle le message complet ici."
+To résolve this We detected that 'artifacts/halal-scan' is a pnpm workspace
+Running "pnpm install --frozen-lockfile" in /home/expo/workingdir/build directory
+Scope: all 9 workspace projects
+WARN  Ignoring not compatible lockfile at /home/expo/workingdir/build/pnpm-lock.yaml
+ERR_PNPM_NO_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is absent
+
+Note that in CI environments this setting is true by default. If you still need to run install in such cases, use "pnpm install --no-frozen-lockfile"
+pnpm install --frozen-lockfile exited with non-zero code: 1
