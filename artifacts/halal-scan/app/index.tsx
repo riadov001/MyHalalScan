@@ -32,6 +32,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ResultOverlay from "@/components/ResultOverlay";
 import C from "@/constants/colors";
 import { checkCustomIngredients, type ScanResult, useScanContext } from "@/context/ScanContext";
+import { analyzeImageWithOCR, type ImageOCRResult } from "@/lib/pollinations";
 import type { Product } from "@/lib/db";
 
 const { width: W } = Dimensions.get("window");
@@ -41,6 +42,9 @@ const CORNER = 38;
 const CT = 4;
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
+if (!process.env.EXPO_PUBLIC_DOMAIN) {
+  console.error("[HalalScan] ⚠️ EXPO_PUBLIC_DOMAIN manquant — les requêtes API échoueront");
+}
 
 interface ScanState {
   result: ScanResult; productName: string; barcode: string;
@@ -224,78 +228,145 @@ export default function HomeScreen() {
     [],
   );
 
-  // ── Web: capture frame from CameraView + scan with scanFromURLAsync ────────
-  const handleWebCaptureScan = useCallback(async () => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-    setLoading(true);
+  // ── Blob URL → base64 (web uniquement, pour FileReader) ──────────────────
+  const blobToBase64 = useCallback(async (url: string): Promise<string> => {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(((reader.result as string).split(",")[1]) ?? "");
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }, []);
 
-    // Helper: scan an image URI and process result
-    const scanUri = async (uri: string) => {
+  // ── Process OCR result from Pollinations vision ───────────────────────────
+  const processOCRResult = useCallback((ocr: ImageOCRResult) => {
+    loadingRef.current = false;
+    setLoading(false);
+    lastBarcode.current = null;
+    cooldown.current = false;
+
+    if (!ocr.productName && !ocr.ingredients && !ocr.halalVerdict) {
+      Alert.alert(
+        "Produit non identifié",
+        "L'IA n'a pas pu lire les informations de ce produit.\n\nConseils :\n• Photographiez l'étiquette avec la liste d'ingrédients\n• Assurez-vous que le texte est net et bien éclairé\n• Évitez les reflets et le flou",
+      );
+      return;
+    }
+
+    setScanResult({
+      result: ocr.halalVerdict?.result ?? "unknown",
+      productName: ocr.productName ?? "Produit analysé par IA",
+      barcode: ocr.barcode ?? "IA-OCR",
+      reason: ocr.halalVerdict?.reason ?? "Analyse visuelle IA · Pollinations",
+      ingredientsText: ocr.ingredients ?? undefined,
+    });
+  }, []);
+
+  // ── Barcode scan → OCR fallback (helper partagé) ──────────────────────────
+  const tryBarcodeOrOCR = useCallback(async (
+    uri: string,
+    getBase64: () => Promise<string>,
+    skipBarcodeAttempt = false,
+  ): Promise<void> => {
+    // 1. Tentative rapide de lecture code-barres (pas de spinner, < 500ms)
+    if (!skipBarcodeAttempt) {
       try {
         const codes = await Camera.scanFromURLAsync(uri, [
           "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
         ]);
         if (codes[0]?.data) {
+          loadingRef.current = false;
+          setLoading(false);
           cooldown.current = false;
           lastBarcode.current = null;
           processBarcode(codes[0].data);
-        } else {
-          loadingRef.current = false;
-          setLoading(false);
-          Alert.alert(
-            "Aucun code-barres détecté",
-            "Positionnez le code-barres bien centré devant la caméra et réessayez. Vous pouvez aussi saisir le code manuellement.",
-            [{ text: "OK" }],
+          return;
+        }
+      } catch { /* pas de code-barres → OCR */ }
+    }
+
+    // 2. Fallback OCR via Pollinations AI (10-30s → afficher spinner)
+    loadingRef.current = true;
+    setLoading(true);
+
+    try {
+      const b64 = await getBase64();
+      const ocr = await analyzeImageWithOCR(b64);
+
+      if (ocr?.barcode) {
+        // L'OCR a lu un code-barres → utiliser le flux API normal
+        loadingRef.current = false;
+        setLoading(false);
+        cooldown.current = false;
+        lastBarcode.current = null;
+        processBarcode(ocr.barcode);
+        return;
+      }
+
+      if (ocr) {
+        processOCRResult(ocr);
+      } else {
+        loadingRef.current = false;
+        setLoading(false);
+        Alert.alert(
+          "Analyse impossible",
+          "L'IA n'a pas pu analyser cette image.\nVérifiez votre connexion internet et réessayez.",
+        );
+      }
+    } catch {
+      loadingRef.current = false;
+      setLoading(false);
+      Alert.alert("Erreur IA", "L'analyse IA a échoué. Vérifiez votre connexion internet.");
+    }
+  }, [processBarcode, processOCRResult]);
+
+  // ── Web: capture depuis CameraView + OCR si pas de code-barres ───────────
+  const handleWebCaptureScan = useCallback(async () => {
+    if (loadingRef.current) return;
+
+    // Essayer takePictureAsync depuis le live preview (avec base64 natif)
+    if (cameraViewRef.current) {
+      try {
+        loadingRef.current = true;
+        setLoading(true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const photo = await (cameraViewRef.current as any).takePictureAsync({ quality: 0.85, base64: true });
+        loadingRef.current = false;
+        setLoading(false);
+        if (photo?.uri) {
+          await tryBarcodeOrOCR(
+            photo.uri,
+            async () => photo.base64 ?? await blobToBase64(photo.uri),
           );
+          return;
         }
       } catch {
         loadingRef.current = false;
         setLoading(false);
       }
-    };
-
-    // Try takePictureAsync from the CameraView first (live preview capture)
-    if (cameraViewRef.current) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const photo = await (cameraViewRef.current as any).takePictureAsync({ quality: 0.85 });
-        if (photo?.uri) { await scanUri(photo.uri); return; }
-      } catch { /* fall through to file-input */ }
     }
 
-    // Fallback: browser file input (works in Firefox / Safari)
-    loadingRef.current = false;
-    setLoading(false);
+    // Fallback : sélection de fichier (Firefox, Safari, mobile sans CameraView)
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
     input.onchange = async (e: Event) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      loadingRef.current = true;
-      setLoading(true);
       const url = URL.createObjectURL(file);
-      await scanUri(url);
+      await tryBarcodeOrOCR(url, () => blobToBase64(url));
       URL.revokeObjectURL(url);
     };
     input.click();
-  }, [processBarcode]);
+  }, [tryBarcodeOrOCR, blobToBase64]);
 
-  // ── Gallery picker ────────────────────────────────────────────────────────
+  // ── Galerie photo (toutes plateformes) + OCR fallback ────────────────────
   const pickFromGallery = useCallback(async () => {
     if (loadingRef.current) return;
 
-    if (Platform.OS === "ios") {
-      Alert.alert(
-        "Galerie non disponible sur iPhone",
-        "La détection de codes-barres EAN depuis la galerie n'est pas prise en charge sur iOS (limitation système Apple).\n\nUtilisez le scanner caméra ou saisissez le code manuellement.",
-        [{ text: "OK" }],
-      );
-      return;
-    }
-
-    // Web: use file input (works in all browsers)
+    // Web : sélection de fichier
     if (Platform.OS === "web") {
       const input = document.createElement("input");
       input.type = "file";
@@ -303,73 +374,36 @@ export default function HomeScreen() {
       input.onchange = async (e: Event) => {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (!file) return;
-        loadingRef.current = true;
-        setLoading(true);
         const url = URL.createObjectURL(file);
-        try {
-          const codes = await Camera.scanFromURLAsync(url, [
-            "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
-          ]);
-          URL.revokeObjectURL(url);
-          if (codes[0]?.data) {
-            cooldown.current = false;
-            lastBarcode.current = null;
-            processBarcode(codes[0].data);
-          } else {
-            loadingRef.current = false;
-            setLoading(false);
-            Alert.alert("Aucun code-barres", "Aucun code-barres lisible dans cette image.");
-          }
-        } catch {
-          URL.revokeObjectURL(url);
-          loadingRef.current = false;
-          setLoading(false);
-        }
+        await tryBarcodeOrOCR(url, () => blobToBase64(url));
+        URL.revokeObjectURL(url);
       };
       input.click();
       return;
     }
 
+    // Native (iOS + Android) : ImagePicker avec base64 intégré
     try {
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
-        quality: 1,
+        quality: 0.85,
         allowsEditing: false,
+        base64: true,
       });
       if (picked.canceled || !picked.assets?.[0]) return;
-      const rawUri = picked.assets[0].uri;
 
-      loadingRef.current = true;
-      setLoading(true);
+      const asset = picked.assets[0];
+      const uri = asset.uri.startsWith("file://") ? asset.uri : `file://${asset.uri}`;
+      const b64 = asset.base64 ?? "";
 
-      const uri = rawUri.startsWith("file://") ? rawUri : `file://${rawUri}`;
-
-      let barcodeData: string | null = null;
-      const codes = await Camera.scanFromURLAsync(uri, [
-        "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
-      ]);
-      barcodeData = codes.length > 0 && codes[0].data ? codes[0].data : null;
-
-      loadingRef.current = false;
-      setLoading(false);
-
-      if (barcodeData) {
-        cooldown.current = false;
-        lastBarcode.current = null;
-        processBarcode(barcodeData);
-      } else {
-        Alert.alert(
-          "Aucun code-barres trouvé",
-          "La photo ne contient pas de code-barres lisible.\n\nConseils :\n• Photo nette et bien éclairée\n• Le code-barres doit occuper la majeure partie de l'image\n• Évitez les reflets",
-          [{ text: "OK" }],
-        );
-      }
+      // iOS : Camera.scanFromURLAsync peu fiable → OCR direct
+      await tryBarcodeOrOCR(uri, async () => b64, Platform.OS === "ios");
     } catch {
       loadingRef.current = false;
       setLoading(false);
       Alert.alert("Erreur galerie", "Impossible de lire cette image.");
     }
-  }, [processBarcode]);
+  }, [tryBarcodeOrOCR, blobToBase64]);
 
   const dismiss = useCallback(() => {
     setScanResult(null);
@@ -377,6 +411,7 @@ export default function HomeScreen() {
     cooldown.current = false;
     autoStartedRef.current = false;
   }, []);
+
 
   const handleManualSubmit = useCallback(() => {
     const code = manualCode.trim();

@@ -187,7 +187,7 @@ const OFF_FIELDS = [
 
 // Country-specific OpenFoodFacts mirrors — tried in parallel for maximum coverage
 const OFF_COUNTRY_MIRRORS = [
-  "fr", "de", "it", "es", "be", "uk", "nl", "at", "ch", "us", "ma", "dz", "tn",
+  "fr", "de", "it", "es", "be", "gb", "nl", "at", "ch", "us", "ma", "dz", "tn",
 ];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -586,16 +586,21 @@ async function fetchFromOFF(url: string): Promise<Record<string, unknown> | null
   try {
     const response = await fetch(url, {
       headers: { "User-Agent": "HalalScan/1.0 (contact@halalscan.app)" },
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error(`[OFF] HTTP ${response.status} ← ${url.split("?")[0]}`);
+      return null;
+    }
     const json = (await response.json()) as {
       status: number;
       product?: Record<string, unknown>;
     };
     if (json.status === 1 && json.product) return json.product;
     return null;
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[OFF] ${msg} ← ${url.split("?")[0]}`);
     return null;
   }
 }
