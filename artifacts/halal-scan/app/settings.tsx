@@ -102,29 +102,10 @@ const HARAM: { emoji: string; title: string; items: string[] }[] = [
 
 const WARNING: { emoji: string; title: string; items: string[] }[] = [
   {
-    emoji: "🧪", title: "Additifs à vérifier",
+    emoji: "🦴", title: "Gélatine & graisse bovine",
     items: [
-      "E920 — L-Cystéine (souvent d'origine animale)",
-      "E120 — Carmin / Cochenille (insecte)",
-      "E904 — Shellac / Laque de gomme (insecte)",
-    ],
-  },
-  {
-    emoji: "🧫", title: "Enzymes & présure",
-    items: [
-      "Présure animale · Rennet · Rennin",
-      "Enzymes de coagulation",
-      "Chymosin (peut être d'origine animale)",
-    ],
-  },
-  {
-    emoji: "🥛", title: "Arômes & dérivés (origine incertaine)",
-    items: [
-      "Arômes naturels (source inconnue)",
       "Gélatine bovine / beef gelatin — abattage non certifié",
-      "Gélatine de poisson — avis divergents entre savants",
-      "Lactosérum / Whey · Caséine / Casein",
-      "Suif / Tallow (graisse de bœuf)",
+      "Suif / Tallow (graisse de bœuf) — abattage non certifié",
     ],
   },
 ];
@@ -136,8 +117,24 @@ const HALAL_OK: { emoji: string; title: string; items: string[] }[] = [
       "Vinaigre (toutes formes) — alcool converti en acide acétique",
       "Levure de bière — levure, pas de l'alcool",
       "Gélatine végétale · Gélatine de fruits",
+      "Gélatine de poisson — majorité des savants l'acceptent",
       "Agar-agar — gélifiant végétal",
       "Extraits de plantes · Épices naturelles",
+    ],
+  },
+];
+
+const HALAL_ALLOWED: { emoji: string; title: string; items: string[] }[] = [
+  {
+    emoji: "✅", title: "Autorisés par défaut",
+    items: [
+      "Arômes naturels",
+      "E920 — L-Cystéine",
+      "E120 — Carmin / Cochenille",
+      "E904 — Shellac / Laque de gomme",
+      "Présure / Rennet / Chymosin",
+      "Whey / Lactosérum / Caséine",
+      "Esters d'acides gras / Stéarates",
     ],
   },
 ];
@@ -343,6 +340,8 @@ export default function SettingsScreen() {
 
         <SectionTitle label="TOUJOURS AUTORISÉ" color={C.halalLight} />
         {HALAL_OK.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.halalLight} />)}
+        <SectionTitle label="AUTORISÉS PAR DÉFAUT" color="#1A9A50" />
+        {HALAL_ALLOWED.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent="#1A9A50" />)}       
 
         <View style={styles.explainCard}>
           <Text style={styles.explainTitle}>📌  Comprendre les résultats</Text>

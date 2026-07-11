@@ -126,31 +126,11 @@ const HARAM_GELATIN_TERMS: string[] = [
 ];
 
 const WARNING_INGREDIENTS: string[] = [
-  // ── l-cysteine ──
-  "e920", "l cysteine", "cysteine",
-  // ── rennet / présure ──
-  "presure", "rennet", "rennin", "presure animale",
-  "enzymes de coagulation", "chymosin",
-  // ── insect-derived colorings ──
-  "e120", "carmin", "carmine", "cochenille",
-  "rouge cochenille", "acide carminique", "carminic acid",
-  "e904", "shellac", "laque de gomme",
-  // ── nucleotides (may be from meat/yeast) ──
-  "e627", "disodium guanylate", "guanylate disodique",
-  "e631", "disodium inosinate", "inosinate disodique",
-  "e635", "disodium ribonucleotides", "ribonucleotides disodiques",
-  // ── natural flavors (source unknown) ──
-  "aromes naturels", "arome naturel", "natural flavors",
-  "natural flavour", "naturliche aromen",
-  "aroma naturale", "aromas naturales",
-  // ── whey / casein (animal origin, may contain rennet) ──
-  "lactoserum", "whey", "caseine", "casein",
-  // ── tallow / suif ──
-  "suif", "tallow", "beef tallow", "graisse animale",
-  // ── malt extract ──
-  "extrait de malt",
-  // ── carmine variants ──
-  "e124",
+  // ── bovine gelatin — requires halal slaughter, unverifiable → warning ──
+  "gelatine bovine", "bovine gelatin", "bovine gelatine",
+  "beef gelatin", "beef gelatine",
+  // ── tallow / suif — unverifiable halal slaughter → warning ──
+  "suif", "tallow", "beef tallow",
 ];
 
 const HARAM_CATEGORIES: string[] = [
@@ -341,15 +321,12 @@ interface MaskResult {
   maskedText: string;
   /** Found gelatine from bovine source (→ warning) */
   bovineGelatin: boolean;
-  /** Found gelatine from fish source (→ warning) */
-  fishGelatin: boolean;
 }
 
 /** Replace safe compound phrases with a neutral token, return what was found. */
 function maskSafeCompounds(normText: string): MaskResult {
   let text = normText;
   let bovineGelatin = false;
-  let fishGelatin = false;
 
   const replaceAll = (t: string, phrase: string) =>
     t.split(phrase).join(" __SAFE__ ");
@@ -386,17 +363,16 @@ function maskSafeCompounds(normText: string): MaskResult {
   ];
   for (const p of vegGelatin) text = replaceAll(text, p);
 
-  // ── Fish gelatin — debatable (most scholars allow fish, mark as warning) ──
+  // ── Fish gelatin — allowed by most scholars → halal (safe, no warning) ──
   const fishGelPhrases = [
     "gelatine de poisson", "fish gelatin", "fish gelatine",
     "collagene de poisson", "fish collagen",
     "gelatine de saumon", "gelatine de thon", "gelatine de cabillaud",
   ];
-  for (const p of fishGelPhrases) {
-    if (text.includes(p)) { fishGelatin = true; text = replaceAll(text, p); }
-  }
+  for (const p of fishGelPhrases) text = replaceAll(text, p);
 
   // ── Bovine gelatin — requires halal slaughter, unverifiable → warning ──
+  // NOTE: kept in masking logic so it is NOT matched by HARAM_GELATIN_TERMS
   const bovineGelPhrases = [
     "gelatine bovine", "bovine gelatin", "bovine gelatine",
     "beef gelatin", "beef gelatine",
@@ -424,10 +400,10 @@ function maskSafeCompounds(normText: string): MaskResult {
 
   // ── Vanilla / rum flavouring (non-alcoholic extracts used as aroma) ──
   // These are listed in France as "arôme naturel de vanille" or "arôme rhum"
-  // They are already caught by the WARNING_INGREDIENTS "aromes naturels" check
-  // so we do NOT mask them here — we want the warning to fire.
+  // NOTE: aromas naturels are now halal by default (removed from WARNING_INGREDIENTS)
+  // so we mask them as safe to prevent "arome naturel de vanille" from matching "vanille"
 
-  return { maskedText: text, bovineGelatin, fishGelatin };
+  return { maskedText: text, bovineGelatin };
 }
 
 // ─── main analysis ────────────────────────────────────────────────────────────
@@ -557,7 +533,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
 
   // Normalise and MASK safe compounds first to prevent false positives
   const normRaw = normalise(ingredientsText);
-  const { maskedText: ingredients, bovineGelatin, fishGelatin } = maskSafeCompounds(normRaw);
+  const { maskedText: ingredients, bovineGelatin } = maskSafeCompounds(normRaw);
 
   // 6a – Haram terms (explicit pork/alcohol/blood/etc.)
   for (const ing of HARAM_INGREDIENTS) {
@@ -586,8 +562,7 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
   // 6c – Warning ingredients
   const detectedWarnings: string[] = [];
 
-  // Fish/bovine gelatin detected during masking → warning
-  if (fishGelatin) detectedWarnings.push("gélatine de poisson (origine poisson)");
+  // Bovine gelatin detected during masking → warning (fish gelatin → halal)
   if (bovineGelatin) detectedWarnings.push("gélatine bovine (abattage non certifié)");
 
   for (const ing of WARNING_INGREDIENTS) {
