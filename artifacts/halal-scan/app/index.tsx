@@ -162,6 +162,10 @@ export default function HomeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     }
 
+    // Capture and clear atomically — all exit paths below automatically discard the ref
+    const thisPhotoUpload = pendingPhotoUpload.current;
+    pendingPhotoUpload.current = null;
+
     const cached = getProduct(barcode);
     if (cached && !pendingBarcodes.includes(barcode)) {
       loadingRef.current = false; setLoading(false);
@@ -199,10 +203,9 @@ export default function HomeScreen() {
         finalReason = `Ingrédient personnalisé détecté : "${customHit}"`;
       }
 
-      const photoPath = pendingPhotoUpload.current
-        ? await pendingPhotoUpload.current.catch(() => null)
+      const photoPath = thisPhotoUpload
+        ? await thisPhotoUpload.catch(() => null)
         : null;
-      pendingPhotoUpload.current = null;
 
       const product: Product = {
         barcode, result: finalResult, productName: json.productName, timestamp: Date.now(),
@@ -253,6 +256,10 @@ export default function HomeScreen() {
     lastBarcode.current = null;
     cooldown.current = false;
 
+    // Capture and clear atomically — all exit paths automatically discard the ref
+    const thisPhotoUpload = pendingPhotoUpload.current;
+    pendingPhotoUpload.current = null;
+
     if (!ocr.productName && !ocr.ingredients && !ocr.halalVerdict) {
       loadingRef.current = false;
       setLoading(false);
@@ -263,10 +270,9 @@ export default function HomeScreen() {
       return;
     }
 
-    const photoPath = pendingPhotoUpload.current
-      ? await pendingPhotoUpload.current.catch(() => null)
+    const photoPath = thisPhotoUpload
+      ? await thisPhotoUpload.catch(() => null)
       : null;
-    pendingPhotoUpload.current = null;
 
     loadingRef.current = false;
     setLoading(false);
@@ -340,6 +346,7 @@ export default function HomeScreen() {
       if (ocr) {
         await processOCRResult(ocr);
       } else {
+        pendingPhotoUpload.current = null;
         loadingRef.current = false;
         setLoading(false);
         Alert.alert(
@@ -348,6 +355,7 @@ export default function HomeScreen() {
         );
       }
     } catch {
+      pendingPhotoUpload.current = null;
       loadingRef.current = false;
       setLoading(false);
       Alert.alert("Erreur IA", "L'analyse IA a échoué. Vérifiez votre connexion internet.");
