@@ -65,6 +65,7 @@ export default function HomeScreen() {
   const loadingRef = useRef(false);
   const scanningRef = useRef(false);
   const autoStartedRef = useRef(false);
+  const cameraViewRef = useRef<CameraView>(null);
 
   const {
     addProduct, queueOfflineScan, whitelistProduct,
@@ -216,6 +217,64 @@ export default function HomeScreen() {
     [],
   );
 
+  // ── Web: capture frame from CameraView + scan with scanFromURLAsync ────────
+  const handleWebCaptureScan = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+
+    // Helper: scan an image URI and process result
+    const scanUri = async (uri: string) => {
+      try {
+        const codes = await Camera.scanFromURLAsync(uri, [
+          "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
+        ]);
+        if (codes[0]?.data) {
+          cooldown.current = false;
+          lastBarcode.current = null;
+          processBarcode(codes[0].data);
+        } else {
+          loadingRef.current = false;
+          setLoading(false);
+          Alert.alert(
+            "Aucun code-barres détecté",
+            "Positionnez le code-barres bien centré devant la caméra et réessayez. Vous pouvez aussi saisir le code manuellement.",
+            [{ text: "OK" }],
+          );
+        }
+      } catch {
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    };
+
+    // Try takePictureAsync from the CameraView first (live preview capture)
+    if (cameraViewRef.current) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const photo = await (cameraViewRef.current as any).takePictureAsync({ quality: 0.85 });
+        if (photo?.uri) { await scanUri(photo.uri); return; }
+      } catch { /* fall through to file-input */ }
+    }
+
+    // Fallback: browser file input (works in Firefox / Safari)
+    loadingRef.current = false;
+    setLoading(false);
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      loadingRef.current = true;
+      setLoading(true);
+      const url = URL.createObjectURL(file);
+      await scanUri(url);
+      URL.revokeObjectURL(url);
+    };
+    input.click();
+  }, [processBarcode]);
+
   // ── Gallery picker ────────────────────────────────────────────────────────
   const pickFromGallery = useCallback(async () => {
     if (loadingRef.current) return;
@@ -229,7 +288,40 @@ export default function HomeScreen() {
       return;
     }
 
-    if (Platform.OS === "web") return;
+    // Web: use file input (works in all browsers)
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = async (e: Event) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        loadingRef.current = true;
+        setLoading(true);
+        const url = URL.createObjectURL(file);
+        try {
+          const codes = await Camera.scanFromURLAsync(url, [
+            "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
+          ]);
+          URL.revokeObjectURL(url);
+          if (codes[0]?.data) {
+            cooldown.current = false;
+            lastBarcode.current = null;
+            processBarcode(codes[0].data);
+          } else {
+            loadingRef.current = false;
+            setLoading(false);
+            Alert.alert("Aucun code-barres", "Aucun code-barres lisible dans cette image.");
+          }
+        } catch {
+          URL.revokeObjectURL(url);
+          loadingRef.current = false;
+          setLoading(false);
+        }
+      };
+      input.click();
+      return;
+    }
 
     try {
       const picked = await ImagePicker.launchImageLibraryAsync({
@@ -375,13 +467,14 @@ export default function HomeScreen() {
       <View style={styles.cameraArea}>
         {cameraGranted ? (
           <CameraView
+            ref={cameraViewRef}
             style={StyleSheet.absoluteFill}
             facing="back"
             enableTorch={torch}
             barcodeScannerSettings={{
               barcodeTypes: ["ean13","ean8","upc_a","upc_e","code128","code39","qr"],
             }}
-            onBarcodeScanned={stableOnBarcodeScanned}
+            onBarcodeScanned={Platform.OS === "web" ? undefined : stableOnBarcodeScanned}
           />
         ) : (
           <View style={styles.noCamBg} />
@@ -461,24 +554,43 @@ export default function HomeScreen() {
           <>
             {cameraGranted && (
               <Animated.View style={[{ width: "100%" }, btnStyle]}>
-                <Pressable
-                  onPress={toggleScan}
-                  android_ripple={{ color: "rgba(255,255,255,0.12)" }}
-                  style={({ pressed }) => [styles.mainBtn, { opacity: pressed ? 0.9 : 1 }]}
-                >
-                  <LinearGradient
-                    colors={scanning
-                      ? ["#C83020", "#9A1E10", "#6E0E08"]
-                      : [C.goldLight, C.gold, "#A07828"]}
-                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                    style={styles.mainBtnGrad}
+                {Platform.OS === "web" ? (
+                  /* Web: single-frame capture button (works in all browsers) */
+                  <Pressable
+                    onPress={handleWebCaptureScan}
+                    android_ripple={{ color: "rgba(255,255,255,0.12)" }}
+                    style={({ pressed }) => [styles.mainBtn, { opacity: pressed ? 0.9 : 1 }]}
                   >
-                    <Text style={styles.mainBtnIcon}>{scanning ? "⏹" : "📷"}</Text>
-                    <Text style={styles.mainBtnTxt}>
-                      {scanning ? "ARRÊTER LE SCAN" : "SCANNER UN PRODUIT"}
-                    </Text>
-                  </LinearGradient>
-                </Pressable>
+                    <LinearGradient
+                      colors={[C.goldLight, C.gold, "#A07828"]}
+                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                      style={styles.mainBtnGrad}
+                    >
+                      <Text style={styles.mainBtnIcon}>📸</Text>
+                      <Text style={styles.mainBtnTxt}>CAPTURER &amp; ANALYSER</Text>
+                    </LinearGradient>
+                  </Pressable>
+                ) : (
+                  /* Mobile: live scan toggle */
+                  <Pressable
+                    onPress={toggleScan}
+                    android_ripple={{ color: "rgba(255,255,255,0.12)" }}
+                    style={({ pressed }) => [styles.mainBtn, { opacity: pressed ? 0.9 : 1 }]}
+                  >
+                    <LinearGradient
+                      colors={scanning
+                        ? ["#C83020", "#9A1E10", "#6E0E08"]
+                        : [C.goldLight, C.gold, "#A07828"]}
+                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                      style={styles.mainBtnGrad}
+                    >
+                      <Text style={styles.mainBtnIcon}>{scanning ? "⏹" : "📷"}</Text>
+                      <Text style={styles.mainBtnTxt}>
+                        {scanning ? "ARRÊTER LE SCAN" : "SCANNER UN PRODUIT"}
+                      </Text>
+                    </LinearGradient>
+                  </Pressable>
+                )}
               </Animated.View>
             )}
 

@@ -371,6 +371,34 @@ export default function SettingsScreen() {
             Base ouverte et collaborative · +2 000 000 produits
           </Text>
         </View>
+
+        {/* ── PRIVACY & AI ── */}
+        <View style={[styles.explainCard, { marginTop: 8 }]}>
+          <Text style={styles.explainTitle}>🔒  Confidentialité & IA</Text>
+          <View style={styles.explainRows}>
+            {[
+              { dot: "✅", color: C.halalLight,   bold: "Aucune donnée personnelle",  txt: "Votre historique de scans est stocké uniquement sur cet appareil. Rien n'est envoyé à nos serveurs." },
+              { dot: "🤖", color: C.gold,          bold: "Analyse IA (Pollinations)",  txt: "Le bouton « Demander à l'IA » envoie le nom du produit et sa liste d'ingrédients à Pollinations.ai (service gratuit, sans compte). Aucun identifiant personnel n'est transmis." },
+              { dot: "📷", color: "rgba(255,255,255,0.55)", bold: "Caméra & photos",   txt: "Utilisées uniquement pour scanner les codes-barres. Aucune image n'est conservée ni transmise." },
+              { dot: "🌐", color: "rgba(255,255,255,0.55)", bold: "Open Food Facts",   txt: "Le code-barres scanné est envoyé à Open Food Facts pour récupérer les informations du produit. Voir openfoodfacts.org/privacy." },
+            ].map((r, i) => (
+              <View key={i} style={styles.explainRow}>
+                <Text style={[styles.explainDot, { color: r.color }]}>{r.dot}</Text>
+                <Text style={styles.explainTxt}>
+                  <Text style={{ color: r.color, fontWeight: "700" }}>{r.bold}  </Text>
+                  {r.txt}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={[styles.sourceCard, { marginTop: 4, marginBottom: 8 }]}>
+          <Text style={styles.sourceTxt}>
+            HalalScan v1.0 · Fait avec ❤️ pour la communauté musulmane{"\n"}
+            Ce guide ne remplace pas l'avis d'un imam ou d'une autorité halal certifiée.
+          </Text>
+        </View>
       </ScrollView>
     </View>
   );

@@ -18,8 +18,12 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.halalscan.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "HalalScan a besoin de la caméra pour scanner les codes-barres des produits alimentaires.",
-        "NSSpeechRecognitionUsageDescription": "HalalScan utilise la synthèse vocale pour annoncer les résultats."
+        "NSCameraUsageDescription": "HalalScan utilise la caméra pour scanner les codes-barres des produits alimentaires et vérifier leur conformité halal.",
+        "NSPhotoLibraryUsageDescription": "HalalScan accède à votre photothèque pour scanner les codes-barres depuis vos photos.",
+        "NSPhotoLibraryAddUsageDescription": "HalalScan peut enregistrer des captures dans votre photothèque.",
+        "NSMicrophoneUsageDescription": "HalalScan n'utilise pas le microphone. Cette autorisation est requise par le framework caméra.",
+        "NSSpeechRecognitionUsageDescription": "HalalScan utilise la synthèse vocale pour annoncer les résultats halal à voix haute.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -48,11 +52,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "HalalScan a besoin de la caméra pour scanner les codes-barres."
+          "cameraPermission": "HalalScan utilise la caméra pour scanner les codes-barres des produits et vérifier leur conformité halal.",
+          "microphonePermission": "HalalScan n'utilise pas le microphone.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HalalScan accède à votre photothèque pour scanner les codes-barres depuis vos photos."
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/withPrivacyManifest"
     ],
     "experiments": {
       "typedRoutes": true,

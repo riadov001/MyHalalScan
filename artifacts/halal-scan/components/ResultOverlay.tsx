@@ -1,8 +1,9 @@
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Speech from "expo-speech";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Dimensions,
   Platform,
   Pressable,
@@ -11,6 +12,8 @@ import {
   Text,
   View,
 } from "react-native";
+
+import { getHalalVerdictFromAI, type AIHalalResult } from "@/lib/pollinations";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -82,6 +85,9 @@ export default function ResultOverlay({
 
   const [cd, setCd] = useState(DISMISS_SEC);
   const [showIng, setShowIng] = useState(false);
+  const [aiResult, setAiResult] = useState<AIHalalResult | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(false);
   const dismissed = useRef(false);
   const cdRef = useRef(DISMISS_SEC);
 
@@ -139,6 +145,34 @@ export default function ResultOverlay({
     Speech.stop();
     overlay.value = withTiming(0, { duration: 240 }, (done) => { if (done) runOnJS(onDismiss)(); });
   };
+
+  const handleAskAI = useCallback(async () => {
+    if (aiLoading || isOfflineQueued) return;
+    setAiLoading(true);
+    setAiError(false);
+    try {
+      const res = await getHalalVerdictFromAI(productName, ingredientsText, result);
+      if (res) {
+        setAiResult(res);
+      } else {
+        setAiError(true);
+      }
+    } catch {
+      setAiError(true);
+    } finally {
+      setAiLoading(false);
+    }
+  }, [aiLoading, isOfflineQueued, productName, ingredientsText, result]);
+
+  const aiAccent = aiResult
+    ? aiResult.result === "halal" ? C.halalLight
+      : aiResult.result === "haram" ? C.haramLight
+      : C.warningLight
+    : C.gold;
+
+  const confLabel = aiResult?.confidence === "high" ? "Fiable"
+    : aiResult?.confidence === "medium" ? "Probable"
+    : "Incertain";
 
   const progress = Math.min(100, ((DISMISS_SEC - cd) / DISMISS_SEC) * 100);
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
@@ -263,6 +297,57 @@ export default function ResultOverlay({
           )}
         </View>
 
+        {/* ── AI ANALYSIS ── */}
+        {!isOfflineQueued && (
+          <>
+            {!aiResult ? (
+              <Pressable
+                onPress={handleAskAI}
+                disabled={aiLoading}
+                style={({ pressed }) => [
+                  styles.aiBtn,
+                  { opacity: pressed ? 0.8 : 1, borderColor: aiError ? C.warningLight + "50" : "rgba(200,150,60,0.35)" },
+                ]}
+              >
+                {aiLoading ? (
+                  <>
+                    <ActivityIndicator size="small" color={C.gold} />
+                    <Text style={styles.aiBtnTxt}>Analyse IA en cours…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.aiIcon}>🤖</Text>
+                    <Text style={styles.aiBtnTxt}>
+                      {aiError ? "⚠️  Réessayer l'analyse IA" : "Demander à l'IA (Pollinations)"}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            ) : (
+              <View style={[styles.aiCard, { borderColor: aiAccent + "40", backgroundColor: aiAccent + "0C" }]}>
+                <View style={styles.aiCardHeader}>
+                  <Text style={styles.aiCardEmoji}>🤖</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.aiCardLabel}>Analyse IA · Pollinations</Text>
+                    <Text style={[styles.aiVerdict, { color: aiAccent }]}>
+                      {aiResult.result === "halal" ? "✅  HALAL"
+                        : aiResult.result === "haram" ? "❌  NON HALAL"
+                        : "⚠️  À VÉRIFIER"}
+                    </Text>
+                  </View>
+                  <View style={[styles.confBadge, { backgroundColor: aiAccent + "20", borderColor: aiAccent + "40" }]}>
+                    <Text style={[styles.confTxt, { color: aiAccent }]}>{confLabel}</Text>
+                  </View>
+                </View>
+                <Text style={styles.aiExplanation}>{aiResult.reason}</Text>
+                <Text style={styles.aiDisclaimer}>
+                  L'IA peut se tromper. Vérifiez toujours l'étiquette et consultez un imam pour les cas douteux.
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+
         {/* ── MAIN CTA ── */}
         <Pressable
           onPress={dismiss}
@@ -375,4 +460,30 @@ const styles = StyleSheet.create({
   },
   ctaBtn: { paddingVertical: 22, alignItems: "center" },
   ctaTxt: { fontSize: 18, fontWeight: "900", color: "#FFF", letterSpacing: 0.8 },
+
+  // AI analysis
+  aiBtn: {
+    width: "100%", borderWidth: 1, borderRadius: 14,
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, paddingVertical: 14, paddingHorizontal: 16,
+    backgroundColor: "rgba(200,150,60,0.05)",
+  },
+  aiIcon: { fontSize: 18 },
+  aiBtnTxt: { fontSize: 15, fontWeight: "600", color: C.gold },
+
+  aiCard: {
+    width: "100%", borderWidth: 1, borderRadius: 16, padding: 16, gap: 10,
+  },
+  aiCardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  aiCardEmoji: { fontSize: 24 },
+  aiCardLabel: { fontSize: 11, color: "rgba(255,255,255,0.45)", fontWeight: "600", letterSpacing: 0.5 },
+  aiVerdict: { fontSize: 17, fontWeight: "800", marginTop: 2 },
+  confBadge: {
+    borderWidth: 1, borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 4,
+    alignSelf: "flex-start",
+  },
+  confTxt: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  aiExplanation: { fontSize: 14, color: "rgba(255,255,255,0.78)", lineHeight: 21, fontWeight: "500" },
+  aiDisclaimer: { fontSize: 11, color: "rgba(255,255,255,0.35)", lineHeight: 16, fontStyle: "italic" },
 });
