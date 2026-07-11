@@ -34,6 +34,7 @@ interface Props {
   result: ScanResult; productName: string; barcode: string;
   reason?: string; ingredientsText?: string; ingredientsList?: string[];
   isOfflineQueued?: boolean;
+  source?: "internal_db" | "openfoodfacts" | "unknown" | "ai";
   onDismiss: () => void; onWhitelist: () => void; isWhitelisted: boolean;
 }
 
@@ -75,9 +76,16 @@ const THEMES: Record<string, Theme> = {
   },
 };
 
+const SOURCE_LABELS: Record<string, string> = {
+  internal_db: "📁  Base interne",
+  openfoodfacts: "🌐  OpenFoodFacts",
+  unknown: "❓  Inconnu",
+  ai: "🤖  IA",
+};
+
 export default function ResultOverlay({
   result, productName, barcode, reason, ingredientsText, ingredientsList,
-  isOfflineQueued, onDismiss, onWhitelist, isWhitelisted,
+  isOfflineQueued, source, onDismiss, onWhitelist, isWhitelisted,
 }: Props) {
   const insets = useSafeAreaInsets();
   const key = isOfflineQueued ? "unknown" : result;
@@ -225,6 +233,11 @@ export default function ResultOverlay({
               <View style={[styles.barcodePill, { borderColor: t.accentBorder }]}>
                 <Text style={[styles.barcodeNum, { color: t.accent }]}>{barcode}</Text>
               </View>
+              {!!source && (
+                <View style={[styles.sourcePill, { borderColor: t.accentBorder, backgroundColor: t.accentBg }]}>
+                  <Text style={[styles.sourceTxt, { color: t.accent }]}>{SOURCE_LABELS[source] ?? source}</Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -403,12 +416,17 @@ const styles = StyleSheet.create({
     padding: 18, gap: 10,
   },
   productName: { fontSize: 22, fontWeight: "700", color: C.text, lineHeight: 30, textAlign: "center" },
-  barcodeRow: { alignItems: "center" },
+  barcodeRow: { alignItems: "center", gap: 8, flexDirection: "row", flexWrap: "wrap", justifyContent: "center" },
   barcodePill: {
     borderWidth: 1, borderRadius: 20,
     paddingHorizontal: 14, paddingVertical: 5,
   },
   barcodeNum: { fontSize: 13, fontWeight: "600", letterSpacing: 2.5 },
+  sourcePill: {
+    borderWidth: 1, borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  sourceTxt: { fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
 
   // reason
   reasonCard: {

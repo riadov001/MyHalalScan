@@ -1,6 +1,38 @@
 import { Router, type IRouter } from "express";
+import { db, halalProductsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
+
+// ─── internal DB lookup ────────────────────────────────────────────────────────
+
+async function lookupInternalDb(barcode: string): Promise<{
+  result: "halal" | "haram";
+  name: string;
+  brand?: string | null;
+  certifier?: string | null;
+} | null> {
+  try {
+    const rows = await db
+      .select()
+      .from(halalProductsTable)
+      .where(eq(halalProductsTable.barcode, barcode))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    if (row.halalStatus === "HALAL" || row.halalStatus === "HARAM") {
+      return {
+        result: row.halalStatus === "HALAL" ? "halal" : "haram",
+        name: row.name,
+        brand: row.brand,
+        certifier: row.certifier,
+      };
+    }
+    return null; // DOUBTFUL → fall through to OFF
+  } catch {
+    return null; // DB unavailable → continue normally
+  }
+}
 
 // ─── restriction & classification lists ──────────────────────────────────────
 
@@ -410,6 +442,7 @@ interface AnalysisResult {
   hasIngredients: boolean;
   ingredientsText?: string;
   ingredientsList?: string[];
+  source?: "internal_db" | "openfoodfacts" | "unknown";
 }
 
 function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
@@ -684,8 +717,29 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
     return;
   }
 
-  let product: Record<string, unknown> | null = null;
   const isNumericBarcode = /^\d+$/.test(barcode);
+
+  // ── Step 0: Internal DB (instant — certifié ou interdit connu) ──────────────
+  if (isNumericBarcode) {
+    const internal = await lookupInternalDb(barcode);
+    if (internal) {
+      const certText = internal.certifier ? ` · ${internal.certifier}` : "";
+      const brandText = internal.brand ? ` (${internal.brand})` : "";
+      res.json({
+        result: internal.result,
+        productName: internal.name + brandText,
+        reason: internal.result === "halal"
+          ? `Certifié halal${certText}`
+          : `Non halal – Base de données interne${certText}`,
+        foundInDatabase: true,
+        hasIngredients: true,
+        source: "internal_db",
+      } satisfies AnalysisResult);
+      return;
+    }
+  }
+
+  let product: Record<string, unknown> | null = null;
 
   // Step 1: Query world AND french mirror simultaneously (fastest path)
   const worldUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
@@ -753,12 +807,13 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
         : "Ce produit n'est pas référencé dans les bases de données disponibles",
       foundInDatabase: !!externalName,
       hasIngredients: false,
+      source: "unknown",
     } satisfies AnalysisResult);
     return;
   }
 
   const analysis = analyzeProduct(product);
-  res.json(analysis);
+  res.json({ ...analysis, source: "openfoodfacts" } satisfies AnalysisResult);
 });
 
 export default router;

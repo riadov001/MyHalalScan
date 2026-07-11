@@ -5,7 +5,14 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "seed-halal": "tsx ./src/seed-halal-products.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pg": "^8.20.0",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

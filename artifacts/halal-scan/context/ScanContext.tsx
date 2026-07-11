@@ -149,6 +149,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
             hasIngredients: boolean;
             ingredientsText?: string;
             ingredientsList?: string[];
+            source?: "internal_db" | "openfoodfacts" | "unknown";
           };
           const product: Product = {
             barcode: scan.barcode,
@@ -159,6 +160,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
             ingredientsText: json.ingredientsText,
             ingredientsList: json.ingredientsList,
             isWhitelisted: false,
+            source: json.source,
           };
           await localDb.upsertProduct(product);
           await localDb.removePending(scan.barcode);

@@ -13,6 +13,7 @@ export interface Product {
   ingredientsList?: string[];
   isWhitelisted: boolean;
   photoPath?: string;
+  source?: "internal_db" | "openfoodfacts" | "unknown" | "ai";
 }
 
 export interface PendingScan {

@@ -51,6 +51,7 @@ interface ScanState {
   result: ScanResult; productName: string; barcode: string;
   reason?: string; ingredientsText?: string; ingredientsList?: string[];
   isOfflineQueued?: boolean;
+  source?: "internal_db" | "openfoodfacts" | "unknown" | "ai";
 }
 
 const BARCODE_RE = /^[a-zA-Z0-9-]{1,50}$/;
@@ -174,6 +175,7 @@ export default function HomeScreen() {
         productName: cached.productName, barcode,
         reason: cached.reason, ingredientsText: cached.ingredientsText,
         ingredientsList: cached.ingredientsList,
+        source: cached.source,
       });
       return;
     }
@@ -190,6 +192,7 @@ export default function HomeScreen() {
       const json = (await res.json()) as {
         result: ScanResult; productName: string; reason?: string;
         ingredientsText?: string; ingredientsList?: string[];
+        source?: "internal_db" | "openfoodfacts" | "unknown";
       };
 
       // Local custom-ingredient override: if any custom term found in ingredients → HARAM
@@ -212,12 +215,14 @@ export default function HomeScreen() {
         reason: finalReason, ingredientsText: json.ingredientsText,
         ingredientsList: json.ingredientsList, isWhitelisted: false,
         photoPath: photoPath ?? undefined,
+        source: json.source,
       };
       await addProduct(product);
       setScanResult({
         result: isWhitelisted(barcode) ? "halal" : finalResult,
         productName: json.productName, barcode, reason: finalReason,
         ingredientsText: json.ingredientsText, ingredientsList: json.ingredientsList,
+        source: json.source,
       });
     } catch {
       await queueOfflineScan(barcode);
@@ -758,6 +763,7 @@ export default function HomeScreen() {
           isOfflineQueued={scanResult.isOfflineQueued}
           onDismiss={dismiss}
           onWhitelist={onWhitelist}
+          source={scanResult.source}
           isWhitelisted={isWhitelisted(scanResult.barcode)}
         />
       )}
