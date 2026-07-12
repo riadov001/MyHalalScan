@@ -192,7 +192,7 @@ export default function HomeScreen() {
       const json = (await res.json()) as {
         result: ScanResult; productName: string; reason?: string;
         ingredientsText?: string; ingredientsList?: string[];
-        source?: "internal_db" | "openfoodfacts" | "unknown";
+        source?: "internal_db" | "openfoodfacts" | "ai" | "unknown";
       };
 
       // Local custom-ingredient override: if any custom term found in ingredients → HARAM

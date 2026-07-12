@@ -890,8 +890,8 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
 
   const analysis = analyzeProduct(product);
 
-  // Step 5: If OFF analysis is inconclusive, use AI as final arbiter
-  if (analysis.result === "unknown" && analysis.hasIngredients) {
+  // Step 5: If OFF analysis is inconclusive (unknown result regardless of ingredients), use AI
+  if (analysis.result === "unknown") {
     const rawIngredientsText = analysis.ingredientsText;
     const offProductName = analysis.productName;
     req.log.info({ barcode }, "OFF analysis inconclusive, trying AI fallback");

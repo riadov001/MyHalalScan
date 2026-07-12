@@ -149,7 +149,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
             hasIngredients: boolean;
             ingredientsText?: string;
             ingredientsList?: string[];
-            source?: "internal_db" | "openfoodfacts" | "unknown";
+            source?: "internal_db" | "openfoodfacts" | "ai" | "unknown";
           };
           const product: Product = {
             barcode: scan.barcode,
