@@ -44,7 +44,7 @@ async function askAI(messages: AIMessage[]): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "openai-large",
+      model: "openai-fast",
       messages,
       stream: false,
       seed: Math.floor(Math.random() * 999999),
@@ -87,7 +87,7 @@ export async function analyzeImageWithOCR(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "openai-large",
+        model: "openai-fast",
         messages: [
           {
             role: "user",

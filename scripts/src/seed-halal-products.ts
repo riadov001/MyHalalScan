@@ -1,10 +1,11 @@
 /**
- * Seed the halal_products table from OpenFoodFacts halal-labeled products.
+ * Seed the halal_products table from halal-labelled products.
  * Run with: pnpm --filter @workspace/scripts run seed-halal
  *
- * Sources:
- *   1. OFF France products tagged en:halal
- *   2. OFF global products tagged en:halal (country-agnostic)
+ * Sources (in priority order):
+ *   1. fr.openfoodfacts.org — French halal products (same dataset as
+ *      halalopenfoodfacts.org/fr which is a filtered view of OFF France)
+ *   2. world.openfoodfacts.org — global halal-tagged products fallback
  */
 import { db } from "@workspace/db";
 import { halalProductsTable, type InsertHalalProduct } from "@workspace/db";
@@ -30,8 +31,8 @@ interface OFFSearchResult {
   products: OFFProduct[];
 }
 
-async function fetchPage(page: number, tag: string, attempt = 0): Promise<OFFSearchResult | null> {
-  const url = new URL("https://world.openfoodfacts.org/cgi/search.pl");
+async function fetchPage(page: number, tag: string, attempt = 0, baseUrl = "https://fr.openfoodfacts.org"): Promise<OFFSearchResult | null> {
+  const url = new URL(`${baseUrl}/cgi/search.pl`);
   url.searchParams.set("action", "process");
   url.searchParams.set("tagtype_0", "labels");
   url.searchParams.set("tag_contains_0", "contains");
@@ -50,7 +51,7 @@ async function fetchPage(page: number, tag: string, attempt = 0): Promise<OFFSea
       if (res.status === 503 && attempt < 2) {
         console.error(`[OFF] HTTP 503 for page ${page} — retry ${attempt + 1} in ${(attempt + 1) * 2}s…`);
         await new Promise(r => setTimeout(r, (attempt + 1) * 2_000));
-        return fetchPage(page, tag, attempt + 1);
+        return fetchPage(page, tag, attempt + 1, baseUrl);
       }
       console.error(`[OFF] HTTP ${res.status} for page ${page}`);
       return null;
@@ -59,7 +60,7 @@ async function fetchPage(page: number, tag: string, attempt = 0): Promise<OFFSea
   } catch (err) {
     if (attempt < 2) {
       await new Promise(r => setTimeout(r, (attempt + 1) * 2_000));
-      return fetchPage(page, tag, attempt + 1);
+      return fetchPage(page, tag, attempt + 1, baseUrl);
     }
     console.error(`[OFF] Fetch error page ${page}:`, err);
     return null;
@@ -85,13 +86,13 @@ function isHaramCategory(categoriesTags: string[] | undefined): boolean {
   return categoriesTags.some(c => haramCats.includes(c));
 }
 
-async function seedFromTag(tag: string, status: "HALAL" | "HARAM"): Promise<number> {
+async function seedFromTag(tag: string, status: "HALAL" | "HARAM", baseUrl = "https://fr.openfoodfacts.org"): Promise<number> {
   let total = 0;
   let page = 1;
 
   while (page <= MAX_PAGES) {
-    console.log(`[SEED] Fetching page ${page} for tag: ${tag}…`);
-    const data = await fetchPage(page, tag);
+    console.log(`[SEED] Fetching page ${page} for tag: ${tag} (${baseUrl})…`);
+    const data = await fetchPage(page, tag, 0, baseUrl);
     if (!data || data.products.length === 0) break;
 
     const rows: InsertHalalProduct[] = [];
@@ -145,10 +146,17 @@ async function seedFromTag(tag: string, status: "HALAL" | "HARAM"): Promise<numb
 
 async function main() {
   console.log("=== HalalScan DB Seed ===");
-  console.log("Seeding HALAL products from OpenFoodFacts…");
 
-  const halalCount = await seedFromTag("en:halal", "HALAL");
-  console.log(`\nDone! Seeded ${halalCount} HALAL products total.`);
+  // Source 1: French OpenFoodFacts (same dataset as halalopenfoodfacts.org/fr)
+  console.log("Seeding HALAL products from fr.openfoodfacts.org…");
+  const frCount = await seedFromTag("en:halal", "HALAL", "https://fr.openfoodfacts.org");
+
+  // Source 2: Global OpenFoodFacts (supplements with non-French products)
+  console.log("\nSeeding HALAL products from world.openfoodfacts.org…");
+  const worldCount = await seedFromTag("en:halal", "HALAL", "https://world.openfoodfacts.org");
+
+  const halalCount = frCount + worldCount;
+  console.log(`\nDone! Seeded ${halalCount} HALAL products total (fr: ${frCount}, world: ${worldCount}).`);
 
   // Check DB count
   const [{ value: totalCount }] = await db.select({ value: count() }).from(halalProductsTable);

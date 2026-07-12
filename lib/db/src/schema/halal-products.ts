@@ -1,6 +1,4 @@
 import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod";
 
 export const halalProductsTable = pgTable("halal_products", {
   barcode: text("barcode").primaryKey(),
@@ -13,6 +11,14 @@ export const halalProductsTable = pgTable("halal_products", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertHalalProductSchema = createInsertSchema(halalProductsTable).omit({ updatedAt: true });
-export type InsertHalalProduct = z.infer<typeof insertHalalProductSchema>;
+export type InsertHalalProduct = {
+  barcode: string;
+  name: string;
+  brand?: string | null;
+  halalStatus: "HALAL" | "HARAM" | "DOUBTFUL";
+  certifier?: string | null;
+  source?: string;
+  country?: string | null;
+};
+
 export type HalalProduct = typeof halalProductsTable.$inferSelect;

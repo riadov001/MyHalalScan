@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783816110458,
+      "tag": "0000_create_halal_products",
+      "breakpoints": true
+    }
+  ]
+}

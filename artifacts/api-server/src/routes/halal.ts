@@ -418,7 +418,7 @@ interface AnalysisResult {
   hasIngredients: boolean;
   ingredientsText?: string;
   ingredientsList?: string[];
-  source?: "internal_db" | "openfoodfacts" | "unknown";
+  source?: "internal_db" | "openfoodfacts" | "ai" | "unknown";
 }
 
 function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
@@ -681,6 +681,89 @@ async function fetchProductNameFromUPCItemDB(barcode: string): Promise<string | 
   }
 }
 
+// ─── AI fallback (Pollinations) ──────────────────────────────────────────────
+
+const POLLINATIONS_URL = "https://text.pollinations.ai/openai";
+
+const AI_SYSTEM_PROMPT = `Tu es HalalBot, un expert reconnu en alimentation halal islamique (fiqh alimentaire).
+Tu aides à déterminer si un produit alimentaire est halal, haram ou douteux selon le consensus des écoles juridiques sunnites.
+
+Règles clés :
+- Porc et tous dérivés (lard, gélatine porcine, saindoux, etc.) → HARAM
+- Alcool et toute boisson alcoolisée → HARAM
+- Sang et dérivés → HARAM
+- Gélatine d'origine inconnue ou porcine → HARAM
+- Carmin (E120), shellac (E904) → WARNING (insecte)
+- Présure animale non certifiée, arômes naturels d'origine inconnue → WARNING
+- Produits végétaux purs, épices, céréales, fruits, légumes → HALAL
+- Vinaigre, levure, agar-agar, gomme arabique → HALAL
+
+Réponds UNIQUEMENT avec ce JSON strict (aucun texte avant/après) :
+{"result":"halal","reason":"explication courte max 80 mots","confidence":"high"}
+
+result = "halal" | "haram" | "warning"
+confidence = "high" | "medium" | "low"`;
+
+interface AIHalalResult {
+  result: "halal" | "haram" | "warning";
+  reason: string;
+  confidence: "high" | "medium" | "low";
+}
+
+async function askPollinationsAI(
+  productName: string,
+  ingredientsText?: string | null,
+): Promise<AIHalalResult | null> {
+  try {
+    let prompt = `Produit : "${productName}"`;
+    if (ingredientsText) {
+      prompt += `\nIngrédients : ${ingredientsText.slice(0, 600)}`;
+      prompt += `\nDonne ton verdict halal.`;
+    } else {
+      prompt += `\nIngrédients non disponibles. Donne un verdict basé sur le nom du produit uniquement (confidence: low si incertain).`;
+    }
+
+    const res = await fetch(POLLINATIONS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "openai-fast",
+        messages: [
+          { role: "system", content: AI_SYSTEM_PROMPT },
+          { role: "user", content: prompt },
+        ],
+        stream: false,
+        seed: Math.floor(Math.random() * 999999),
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) throw new Error(`Pollinations HTTP ${res.status}`);
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message: { content: string } }>;
+    };
+    const content = data?.choices?.[0]?.message?.content ?? "";
+    const match = content.match(/\{[\s\S]*?\}/);
+    if (!match) return null;
+
+    const parsed = JSON.parse(match[0]) as Partial<AIHalalResult>;
+    if (!["halal", "haram", "warning"].includes(parsed.result ?? "")) return null;
+
+    return {
+      result: parsed.result as "halal" | "haram" | "warning",
+      reason: (parsed.reason ?? "Analyse IA disponible.").slice(0, 300),
+      confidence: (["high", "medium", "low"].includes(parsed.confidence ?? "")
+        ? parsed.confidence
+        : "medium") as "high" | "medium" | "low",
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[AI] Pollinations error: ${msg}`);
+    return null;
+  }
+}
+
 // ─── route ─────────────────────────────────────────────────────────────────────
 
 router.get("/halal/analyze/:barcode", async (req, res) => {
@@ -769,25 +852,66 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
   }
 
   // Step 4: Still not found — try UPCitemdb for a product name (numeric codes only)
+  let productNameForAI: string | null = null;
   if (!product) {
-    const externalName = isNumericBarcode
+    productNameForAI = isNumericBarcode
       ? await fetchProductNameFromUPCItemDB(barcode)
       : null;
 
-    res.json({
-      result: "unknown",
-      productName: externalName || "Produit non référencé",
-      reason: externalName
-        ? `Produit trouvé (${externalName}) mais ingrédients non disponibles`
-        : "Ce produit n'est pas référencé dans les bases de données disponibles",
-      foundInDatabase: !!externalName,
-      hasIngredients: false,
-      source: "unknown",
-    } satisfies AnalysisResult);
+    // Step 5: AI fallback — ask Pollinations even without ingredients
+    const aiName = productNameForAI || "Produit inconnu";
+    req.log.info({ barcode, aiName }, "Product not in OFF, trying AI fallback");
+    const aiResult = await askPollinationsAI(aiName, null);
+
+    if (aiResult) {
+      const confidenceNote = aiResult.confidence === "low" ? " (confiance faible)" : "";
+      res.json({
+        result: aiResult.result,
+        productName: productNameForAI || "Produit non référencé",
+        reason: aiResult.reason + confidenceNote,
+        foundInDatabase: !!productNameForAI,
+        hasIngredients: false,
+        source: "ai",
+      } satisfies AnalysisResult);
+    } else {
+      res.json({
+        result: "unknown",
+        productName: productNameForAI || "Produit non référencé",
+        reason: productNameForAI
+          ? `Produit trouvé (${productNameForAI}) mais ingrédients non disponibles`
+          : "Ce produit n'est pas référencé dans les bases de données disponibles",
+        foundInDatabase: !!productNameForAI,
+        hasIngredients: false,
+        source: "unknown",
+      } satisfies AnalysisResult);
+    }
     return;
   }
 
   const analysis = analyzeProduct(product);
+
+  // Step 5: If OFF analysis is inconclusive, use AI as final arbiter
+  if (analysis.result === "unknown" && analysis.hasIngredients) {
+    const rawIngredientsText = analysis.ingredientsText;
+    const offProductName = analysis.productName;
+    req.log.info({ barcode }, "OFF analysis inconclusive, trying AI fallback");
+    const aiResult = await askPollinationsAI(offProductName, rawIngredientsText);
+    if (aiResult) {
+      const confidenceNote = aiResult.confidence === "low" ? " (confiance faible)" : "";
+      res.json({
+        result: aiResult.result,
+        productName: offProductName,
+        reason: aiResult.reason + confidenceNote,
+        foundInDatabase: true,
+        hasIngredients: true,
+        ingredientsText: analysis.ingredientsText,
+        ingredientsList: analysis.ingredientsList,
+        source: "ai",
+      } satisfies AnalysisResult);
+      return;
+    }
+  }
+
   res.json({ ...analysis, source: "openfoodfacts" } satisfies AnalysisResult);
 });
 
