@@ -371,13 +371,12 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
-        {/* ── PRIVACY & AI ── */}
+        {/* ── PRIVACY ── */}
         <View style={[styles.explainCard, { marginTop: 8 }]}>
-          <Text style={styles.explainTitle}>🔒  Confidentialité & IA</Text>
+          <Text style={styles.explainTitle}>🔒  Confidentialité</Text>
           <View style={styles.explainRows}>
             {[
               { dot: "✅", color: C.halalLight,   bold: "Aucune donnée personnelle",  txt: "Votre historique de scans est stocké uniquement sur cet appareil. Rien n'est envoyé à nos serveurs." },
-              { dot: "🤖", color: C.gold,          bold: "Analyse IA (Pollinations)",  txt: "Le bouton « Demander à l'IA » envoie le nom du produit et sa liste d'ingrédients à Pollinations.ai (service gratuit, sans compte). Aucun identifiant personnel n'est transmis." },
               { dot: "📷", color: "rgba(255,255,255,0.55)", bold: "Caméra & photos",   txt: "Utilisées uniquement pour scanner les codes-barres. Aucune image n'est conservée ni transmise." },
               { dot: "🌐", color: "rgba(255,255,255,0.55)", bold: "Open Food Facts",   txt: "Le code-barres scanné est envoyé à Open Food Facts pour récupérer les informations du produit. Voir openfoodfacts.org/privacy." },
             ].map((r, i) => (
