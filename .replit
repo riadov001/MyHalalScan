@@ -32,7 +32,7 @@ localPort = 23221
 externalPort = 3000
 
 [objectStorage]
-defaultBucketID = "replit-objstore-8ae3ae51-0955-4dbd-937b-9798948173dd"
+defaultBucketID = "replit-objstore-6e02abd8-c216-4d59-9713-ae5f67de2ec7"
 
 [nix]
 channel = "stable-25_05"
