@@ -23,7 +23,7 @@
       "node": "20.18.3",
       "pnpm": "10.26.1",
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "REMPLACER_PAR_TON_DOMAINE_DEPLOYE"
+        "EXPO_PUBLIC_DOMAIN": "myhalalscan-prod-v-1207--hlalscn.replit.app"
       }
     },
     "production": {
@@ -37,7 +37,7 @@
       "node": "20.18.3",
       "pnpm": "10.26.1",
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "REMPLACER_PAR_TON_DOMAINE_DEPLOYE"
+        "EXPO_PUBLIC_DOMAIN": "myhalalscan-prod-v-1207--hlalscn.replit.app"
       }
     }
   },
