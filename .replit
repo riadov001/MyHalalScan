@@ -36,3 +36,8 @@ defaultBucketID = "replit-objstore-b63a5781-9c70-4b55-b10b-e4ac44986364"
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_DOMAIN = "e7186447-bda9-4f81-a05a-4a88fe77689e-00-23aj3gzkyqhme.riker.replit.dev"
