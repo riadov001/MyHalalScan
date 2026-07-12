@@ -254,9 +254,12 @@ export default function ResultOverlay({
           style={({ pressed }) => [styles.ctaWrap, { opacity: pressed ? 0.88 : 1 }]}
         >
           <LinearGradient colors={t.btnColors} style={styles.ctaBtn}>
-            <Text style={styles.ctaTxt}>📷  SCANNER UN AUTRE PRODUIT</Text>
+            <Text style={styles.ctaTxt}>📷  Fermer &amp; Scanner</Text>
           </LinearGradient>
         </Pressable>
+
+        {/* ── SPI ATTRIBUTION ── */}
+        <Text style={styles.spiAttr}>Powered by Straight Path Intelligence · straight-path.eu</Text>
       </ScrollView>
     </Animated.View>
   );
@@ -364,5 +367,11 @@ const styles = StyleSheet.create({
   },
   ctaBtn: { paddingVertical: 22, alignItems: "center" },
   ctaTxt: { fontSize: 18, fontWeight: "900", color: "#FFF", letterSpacing: 0.8 },
+
+  // SPI attribution
+  spiAttr: {
+    fontSize: 11, color: "rgba(255,255,255,0.22)",
+    textAlign: "center", fontWeight: "400", letterSpacing: 0.3, marginTop: 4,
+  },
 
 });

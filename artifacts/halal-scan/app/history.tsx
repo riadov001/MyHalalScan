@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import C from "@/constants/colors";
 import { useScanContext } from "@/context/ScanContext";
+import { SPIFooter } from "@/components/SPIFooter";
 import type { Product } from "@/lib/db";
 import * as Haptics from "expo-haptics";
 
@@ -247,6 +248,7 @@ export default function HistoryScreen() {
           }
         />
       )}
+      <SPIFooter />
     </View>
   );
 }

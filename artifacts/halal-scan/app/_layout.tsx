@@ -9,10 +9,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AppSplash } from "@/components/AppSplash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ScanProvider } from "@/context/ScanContext";
 
@@ -27,6 +28,7 @@ export default function RootLayout() {
     Inter_700Bold,
     Inter_900Black,
   });
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -48,6 +50,7 @@ export default function RootLayout() {
                 <Stack.Screen name="history" />
                 <Stack.Screen name="settings" />
               </Stack>
+              {showSplash && <AppSplash onDone={() => setShowSplash(false)} />}
             </ScanProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

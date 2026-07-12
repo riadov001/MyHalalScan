@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import C from "@/constants/colors";
 import { useScanContext, type AlwaysHalalIngredient } from "@/context/ScanContext";
+import { SPIFooter } from "@/components/SPIFooter";
 
 const HARAM: { emoji: string; title: string; items: string[] }[] = [
   {
@@ -448,11 +449,12 @@ export default function SettingsScreen() {
 
         <View style={[styles.sourceCard, { marginTop: 4, marginBottom: 8 }]}>
           <Text style={styles.sourceTxt}>
-            HalalScan v1.0 · Fait avec ❤️ pour la communauté musulmane{"\n"}
+            HalalScan v1.2.07 · Fait avec ❤️ pour la communauté musulmane{"\n"}
             Ce guide ne remplace pas l'avis d'un imam ou d'une autorité halal certifiée.
           </Text>
         </View>
       </ScrollView>
+      <SPIFooter />
     </View>
   );
 }

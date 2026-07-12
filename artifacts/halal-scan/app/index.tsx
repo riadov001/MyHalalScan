@@ -30,6 +30,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ResultOverlay from "@/components/ResultOverlay";
+import { SPIFooter } from "@/components/SPIFooter";
 import C from "@/constants/colors";
 import { checkAlwaysHalalOverride, checkCustomIngredients, type ScanResult, useScanContext } from "@/context/ScanContext";
 import type { Product } from "@/lib/db";
@@ -315,29 +316,67 @@ export default function HomeScreen() {
   const handleWebCaptureScan = useCallback(async () => {
     if (loadingRef.current) return;
 
-    // Essayer takePictureAsync depuis le live preview
-    if (cameraViewRef.current) {
+    // ── Priorité 1 : BarcodeDetector API (Chrome 83+, Edge 83+) ──
+    // Detects barcodes directly from the live video stream — no snapshot needed.
+    const video = Platform.OS === "web"
+      ? (document.querySelector("video") as HTMLVideoElement | null)
+      : null;
+
+    if (video && "BarcodeDetector" in window) {
       try {
         loadingRef.current = true;
         setLoading(true);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const photo = await (cameraViewRef.current as any).takePictureAsync({ quality: 0.85 });
+        // @ts-ignore — BarcodeDetector is not yet in TS DOM types
+        const detector = new window.BarcodeDetector({
+          formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"],
+        });
+        const codes: Array<{ rawValue: string }> = await detector.detect(video);
         loadingRef.current = false;
         setLoading(false);
-        if (photo?.uri) {
-          await tryScanFromImage(photo.uri);
+        if (codes[0]?.rawValue) {
+          cooldown.current = false;
+          lastBarcode.current = null;
+          await processBarcode(codes[0].rawValue);
           return;
         }
+        // No barcode detected from live frame — fall through to canvas capture
       } catch {
         loadingRef.current = false;
         setLoading(false);
       }
     }
 
-    // Fallback : sélection de fichier (Firefox, Safari, mobile sans CameraView)
+    // ── Priorité 2 : Canvas snapshot → Camera.scanFromURLAsync ──
+    // Works when BarcodeDetector is unavailable (Firefox, Safari).
+    if (video && video.readyState >= 2) {
+      try {
+        loadingRef.current = true;
+        setLoading(true);
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+          loadingRef.current = false;
+          setLoading(false);
+          await tryScanFromImage(dataUrl);
+          return;
+        }
+        loadingRef.current = false;
+        setLoading(false);
+      } catch {
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    }
+
+    // ── Priorité 3 : Sélection de fichier (universel) ──
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
+    input.capture = "environment"; // Ouvre la caméra sur mobile
     input.onchange = async (e: Event) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
@@ -348,7 +387,7 @@ export default function HomeScreen() {
       URL.revokeObjectURL(url);
     };
     input.click();
-  }, [tryScanFromImage]);
+  }, [tryScanFromImage, processBarcode]);
 
   // ── Galerie photo (toutes plateformes) → scan code-barres ────────────────
   const pickFromGallery = useCallback(async () => {
@@ -501,7 +540,7 @@ export default function HomeScreen() {
               <Text style={{ color: C.halalLight }}>Halal</Text>
               <Text style={{ color: C.gold }}>Scan</Text>
             </Text>
-            <Text style={styles.brandSub}>حلال · Vérification alimentaire</Text>
+            <Text style={styles.brandSub}>حلال · Vérification alimentaire · <Text style={{ color: C.gold }}>v1.2.07</Text></Text>
           </View>
         </View>
         <Pressable onPress={() => setMenuOpen(true)} hitSlop={12} style={styles.hamburgerBtn}>
@@ -526,23 +565,16 @@ export default function HomeScreen() {
           <View style={styles.noCamBg} />
         )}
 
+        {/* Solid dark mask — only the scan frame window shows the camera */}
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <LinearGradient
-            colors={["rgba(6,13,9,0.72)", "transparent"]}
-            style={{ height: "30%" }}
-          />
-          <View style={{ flex: 1 }} />
-          <LinearGradient
-            colors={["transparent", "rgba(6,13,9,0.55)"]}
-            style={{ height: "20%" }}
-          />
+          <View style={styles.scanMaskV} />
+          <View style={{ flexDirection: "row", height: FRAME_H }}>
+            <View style={styles.scanMaskH} />
+            <View style={{ width: FRAME_W }} />
+            <View style={styles.scanMaskH} />
+          </View>
+          <View style={[styles.scanMaskV, { flex: 1 }]} />
         </View>
-        <LinearGradient
-          colors={["rgba(6,13,9,0.55)", "transparent", "rgba(6,13,9,0.55)"]}
-          start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
 
         {/* Scan frame */}
         <View style={styles.frameWrap} pointerEvents="none">
@@ -581,7 +613,7 @@ export default function HomeScreen() {
           {cameraGranted && (
             <Text style={styles.frameStatus}>
               {scanning
-                ? "🟢  Scan actif — approchez le code-barres"
+                ? "● Scan actif — approchez le code-barres"
                 : "Pointez la caméra vers le code-barres"}
             </Text>
           )}
@@ -705,6 +737,9 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {/* SPI Footer */}
+      <SPIFooter />
+
       {/* Result overlay */}
       {scanResult && (
         <ResultOverlay
@@ -799,8 +834,12 @@ const styles = StyleSheet.create({
   },
   hamburgerIcon: { fontSize: 17, color: C.text, fontWeight: "700" },
 
-  cameraArea: { flex: 1, backgroundColor: "#000" },
+  cameraArea: { flex: 1, backgroundColor: "#050D08" },
   noCamBg: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(6,13,9,0.95)" },
+
+  // Scan mask — solid dark zones surrounding the scan window
+  scanMaskV: { width: "100%", backgroundColor: "rgba(4,10,6,0.88)" },
+  scanMaskH: { flex: 1, backgroundColor: "rgba(4,10,6,0.88)" },
 
   frameWrap: {
     ...StyleSheet.absoluteFillObject,

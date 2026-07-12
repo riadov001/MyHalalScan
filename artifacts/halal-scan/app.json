@@ -2,7 +2,7 @@
   "expo": {
     "name": "HalalScan",
     "slug": "myhalalscan",
-    "version": "1.0.0",
+    "version": "1.2.07",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "halal-scan",
