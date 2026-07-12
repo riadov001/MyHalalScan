@@ -64,6 +64,7 @@ export default function HomeScreen() {
   const [torch, setTorch] = useState(false);
   const [scanResult, setScanResult] = useState<ScanState | null>(null);
   const [manualCode, setManualCode] = useState("");
+  const [manualError, setManualError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
 
   const lastBarcode = useRef<string | null>(null);
@@ -430,8 +431,18 @@ export default function HomeScreen() {
       return;
     }
 
-    // Native (iOS + Android) : ImagePicker avec base64 intégré
+    // Native (iOS + Android) : demande permission galerie, puis ImagePicker avec base64
     try {
+      // iOS 14+ and Android 13+ require explicit media library permission
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Accès refusé",
+          "L'accès à la galerie photo est requis.\nActivez-le dans les réglages de votre appareil.",
+        );
+        return;
+      }
+
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: "images",
         quality: 0.85,
@@ -444,12 +455,30 @@ export default function HomeScreen() {
       const uri = asset.uri.startsWith("file://") ? asset.uri : `file://${asset.uri}`;
       const b64 = asset.base64 ?? "";
 
+      if (!b64 && !uri) {
+        Alert.alert("Erreur galerie", "Impossible de lire cette image.");
+        return;
+      }
+
+      // Show loading immediately so the user sees feedback
+      loadingRef.current = true;
+      setLoading(true);
+
       if (b64) {
         pendingPhotoUpload.current = uploadPhotoToStorage(b64, "image/jpeg");
       }
 
       // iOS : Camera.scanFromURLAsync peu fiable → OCR direct
-      await tryBarcodeOrOCR(uri, async () => b64, Platform.OS === "ios");
+      // Android : tentative barcode d'abord, OCR en fallback
+      await tryBarcodeOrOCR(
+        uri,
+        async () => {
+          if (b64) return b64;
+          // Fallback si base64 absent (certains Android) : lecture via FileReader
+          return blobToBase64(uri);
+        },
+        Platform.OS === "ios",
+      );
     } catch {
       loadingRef.current = false;
       setLoading(false);
@@ -468,10 +497,15 @@ export default function HomeScreen() {
 
   const handleManualSubmit = useCallback(() => {
     const code = manualCode.trim();
-    if (!BARCODE_RE.test(code)) {
-      Alert.alert("Code invalide", "Saisissez un code-barres valide (chiffres ou lettres).");
+    if (!code) {
+      setManualError("Saisissez un code-barres avant de valider.");
       return;
     }
+    if (!BARCODE_RE.test(code)) {
+      setManualError("Format invalide — chiffres, lettres et tirets uniquement.");
+      return;
+    }
+    setManualError("");
     Keyboard.dismiss();
     setManualCode("");
     cooldown.current = false;
@@ -722,9 +756,9 @@ export default function HomeScreen() {
 
             <View style={styles.manualRow}>
               <TextInput
-                style={styles.manualInput}
+                style={[styles.manualInput, !!manualError && styles.manualInputErr]}
                 value={manualCode}
-                onChangeText={setManualCode}
+                onChangeText={(t) => { setManualCode(t); if (manualError) setManualError(""); }}
                 placeholder="Saisir un code-barres manuellement"
                 placeholderTextColor="rgba(255,255,255,0.28)"
                 keyboardType="default"
@@ -740,6 +774,9 @@ export default function HomeScreen() {
                 <Text style={styles.manualBtnTxt}>OK</Text>
               </Pressable>
             </View>
+            {!!manualError && (
+              <Text style={styles.manualErrorTxt}>{manualError}</Text>
+            )}
 
             <View style={styles.trustRow}>
               <View style={styles.trustDot} />
@@ -919,6 +956,14 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
     paddingHorizontal: 12,
     fontSize: 14, color: C.text,
+  },
+  manualInputErr: {
+    borderColor: "#E85444",
+    borderWidth: 1,
+    backgroundColor: "rgba(232,84,68,0.08)",
+  },
+  manualErrorTxt: {
+    fontSize: 12, color: "#E85444", fontWeight: "600", marginTop: -4,
   },
   manualBtn: {
     width: 52, height: 44, borderRadius: 10,
