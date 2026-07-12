@@ -1,8 +1,16 @@
-artifacts/api-server/
-artifacts/mockup-sandbox/
+# EAS Build upload ignore — keeps the upload fast by excluding large dirs
+# that EAS doesn't need (node_modules are reinstalled on the build server).
+
 node_modules/
-**/node_modules/
+artifacts/mockup-sandbox/
+artifacts/api-server/
+lib/db/
+scripts/
+.git/
 **/.git/
-dist/
-build/
-*.log
+**/*.log
+**/dist/
+**/build/
+**/.cache/
+**/.metro-cache/
+**/static-build/

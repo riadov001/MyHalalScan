@@ -12,7 +12,7 @@
         "buildType": "apk"
       },
       "node": "20.18.3",
-      "pnpm": "10.28.2"
+      "pnpm": "10.26.1"
     },
     "preview": {
       "distribution": "internal",
@@ -21,7 +21,10 @@
         "buildType": "apk"
       },
       "node": "20.18.3",
-      "pnpm": "10.28.2"
+      "pnpm": "10.26.1",
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "REMPLACER_PAR_TON_DOMAINE_DEPLOYE"
+      }
     },
     "production": {
       "autoIncrement": true,
@@ -32,7 +35,10 @@
         "resourceClass": "m1-medium"
       },
       "node": "20.18.3",
-      "pnpm": "10.28.2"
+      "pnpm": "10.26.1",
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "REMPLACER_PAR_TON_DOMAINE_DEPLOYE"
+      }
     }
   },
   "submit": {
