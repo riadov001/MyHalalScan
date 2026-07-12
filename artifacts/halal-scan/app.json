@@ -64,8 +64,7 @@
         }
       ],
       "expo-font",
-      "expo-web-browser",
-      "./plugins/withPrivacyManifest"
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
