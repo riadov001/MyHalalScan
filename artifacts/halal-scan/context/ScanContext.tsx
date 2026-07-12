@@ -137,9 +137,14 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     try {
       for (const scan of pending) {
         try {
-          const res = await fetch(`${API_BASE}/api/halal/analyze/${scan.barcode}`, {
-            signal: AbortSignal.timeout(12_000),
-          });
+          const ctrl = new AbortController();
+          const tId = setTimeout(() => ctrl.abort(), 12_000);
+          let res: Response;
+          try {
+            res = await fetch(`${API_BASE}/api/halal/analyze/${scan.barcode}`, { signal: ctrl.signal });
+          } finally {
+            clearTimeout(tId);
+          }
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const json = (await res.json()) as {
             result: ScanResult;

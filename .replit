@@ -40,4 +40,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-EXPO_PUBLIC_DOMAIN = "e7186447-bda9-4f81-a05a-4a88fe77689e-00-23aj3gzkyqhme.riker.replit.dev"
+EXPO_PUBLIC_DOMAIN = "https://halalyze.app/"

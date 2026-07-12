@@ -188,7 +188,14 @@ export default function HomeScreen() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/api/halal/analyze/${barcode}`, { signal: AbortSignal.timeout(15_000) });
+      const ctrl = new AbortController();
+      const tId = setTimeout(() => ctrl.abort(), 15_000);
+      let res: Response;
+      try {
+        res = await fetch(`${API_BASE}/api/halal/analyze/${barcode}`, { signal: ctrl.signal });
+      } finally {
+        clearTimeout(tId);
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as {
         result: ScanResult; productName: string; reason?: string;
