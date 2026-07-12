@@ -591,26 +591,40 @@ function analyzeProduct(product: Record<string, unknown>): AnalysisResult {
 // ─── fetch helpers ─────────────────────────────────────────────────────────────
 
 async function fetchFromOFF(url: string): Promise<Record<string, unknown> | null> {
-  try {
-    const response = await fetch(url, {
-      headers: { "User-Agent": "HalalScan/1.0 (contact@halalscan.app)" },
-      signal: AbortSignal.timeout(12_000),
-    });
-    if (!response.ok) {
-      console.error(`[OFF] HTTP ${response.status} ← ${url.split("?")[0]}`);
+  const shortUrl = url.split("?")[0];
+  // Retry once on 429 (rate limit) with a short back-off
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: { "User-Agent": "HalalScan/1.0 (contact@halalscan.app)" },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (response.status === 429) {
+        if (attempt === 1) {
+          // Back off 1.5 s and retry once
+          await new Promise(r => setTimeout(r, 1500));
+          continue;
+        }
+        console.error(`[OFF] HTTP 429 (rate-limited, giving up) ← ${shortUrl}`);
+        return null;
+      }
+      if (!response.ok) {
+        console.error(`[OFF] HTTP ${response.status} ← ${shortUrl}`);
+        return null;
+      }
+      const json = (await response.json()) as {
+        status: number;
+        product?: Record<string, unknown>;
+      };
+      if (json.status === 1 && json.product) return json.product;
+      return null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[OFF] ${msg} ← ${shortUrl}`);
       return null;
     }
-    const json = (await response.json()) as {
-      status: number;
-      product?: Record<string, unknown>;
-    };
-    if (json.status === 1 && json.product) return json.product;
-    return null;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[OFF] ${msg} ← ${url.split("?")[0]}`);
-    return null;
   }
+  return null;
 }
 
 function hasUsableIngredients(product: Record<string, unknown>): boolean {
@@ -799,56 +813,72 @@ router.get("/halal/analyze/:barcode", async (req, res) => {
 
   let product: Record<string, unknown> | null = null;
 
-  // Step 1: Query world AND french mirror simultaneously (fastest path)
-  const worldUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
-  const frUrl = `https://fr.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
+  // Step 1: Prefer v0 API (world + fr mirror in parallel)
+  req.log.info({ barcode }, "[OFF] Trying v0 API (world + fr)");
+  const v0WorldUrl = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json?fields=${OFF_FIELDS}`;
+  const v0FrUrl    = `https://fr.openfoodfacts.org/api/v0/product/${barcode}.json?fields=${OFF_FIELDS}`;
 
-  const [worldProduct, frProduct] = await Promise.all([
-    fetchFromOFF(worldUrl),
-    fetchFromOFF(frUrl),
+  const [v0World, v0Fr] = await Promise.all([
+    fetchFromOFF(v0WorldUrl),
+    fetchFromOFF(v0FrUrl),
   ]);
 
-  // Pick the richest result or merge both
-  if (worldProduct && frProduct) {
-    const worldScore = ingredientScore(worldProduct);
-    const frScore = ingredientScore(frProduct);
-    product = worldScore >= frScore ? worldProduct : frProduct;
-    // Merge missing fields from the other source
-    const other = worldScore >= frScore ? frProduct : worldProduct;
-    mergeIngredients(product, other);
+  if (v0World && v0Fr) {
+    const wScore = ingredientScore(v0World);
+    const fScore = ingredientScore(v0Fr);
+    product = wScore >= fScore ? v0World : v0Fr;
+    mergeIngredients(product, wScore >= fScore ? v0Fr : v0World);
+    req.log.info({ barcode }, "[OFF] v0 both results merged");
   } else {
-    product = worldProduct ?? frProduct;
+    product = v0World ?? v0Fr ?? null;
+    if (product) req.log.info({ barcode }, "[OFF] v0 single result used");
   }
 
-  // Step 2: If found but still missing ingredients, query ALL country mirrors in parallel
+  // Step 2: v0 did not find the product — try v2 as fallback
+  if (!product) {
+    req.log.info({ barcode }, "[OFF] v0 not found, falling back to v2 (world + fr)");
+    const v2WorldUrl = `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
+    const v2FrUrl    = `https://fr.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
+
+    const [v2World, v2Fr] = await Promise.all([
+      fetchFromOFF(v2WorldUrl),
+      fetchFromOFF(v2FrUrl),
+    ]);
+
+    if (v2World && v2Fr) {
+      const wScore = ingredientScore(v2World);
+      const fScore = ingredientScore(v2Fr);
+      product = wScore >= fScore ? v2World : v2Fr;
+      mergeIngredients(product, wScore >= fScore ? v2Fr : v2World);
+      req.log.info({ barcode }, "[OFF] v2 both results merged");
+    } else {
+      product = v2World ?? v2Fr ?? null;
+      if (product) req.log.info({ barcode }, "[OFF] v2 single result used");
+    }
+  }
+
+  // Step 3: Found product but missing ingredients — try all country mirrors (v0 + v2)
   if (product && !hasUsableIngredients(product)) {
-    req.log.info({ barcode }, "No ingredients from primary endpoints, querying all country mirrors");
+    req.log.info({ barcode }, "[OFF] Product found but no ingredients, querying all country mirrors");
 
     const mirrorResults = await Promise.all(
       OFF_COUNTRY_MIRRORS
-        .filter(c => c !== "fr") // fr already tried
-        .map(async (country) => {
-          const url = `https://${country}.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`;
-          return fetchFromOFF(url);
-        })
+        .filter(c => c !== "fr") // fr already tried above
+        .flatMap((country) => [
+          fetchFromOFF(`https://${country}.openfoodfacts.org/api/v0/product/${barcode}.json?fields=${OFF_FIELDS}`),
+          fetchFromOFF(`https://${country}.openfoodfacts.org/api/v2/product/${barcode}.json?fields=${OFF_FIELDS}`),
+        ])
     );
 
     for (const mirror of mirrorResults) {
       if (mirror && hasUsableIngredients(mirror)) {
         mergeIngredients(product, mirror);
         if (hasUsableIngredients(product)) {
-          req.log.info({ barcode }, "Ingredients found from country mirror");
+          req.log.info({ barcode }, "[OFF] Ingredients found from country mirror");
           break;
         }
       }
     }
-  }
-
-  // Step 3: product not found at all — try v0 API and v2/world simultaneously
-  if (!product) {
-    const v0Url = `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`;
-    const v0Product = await fetchFromOFF(v0Url);
-    if (v0Product) product = v0Product;
   }
 
   // Step 4: Still not found — try UPCitemdb for a product name (numeric codes only)

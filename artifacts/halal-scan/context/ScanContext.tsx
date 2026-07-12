@@ -171,8 +171,13 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
           await localDb.removePending(scan.barcode);
           setProducts((prev) => ({ ...prev, [scan.barcode]: product }));
           setPendingBarcodes((prev) => prev.filter((b) => b !== scan.barcode));
-        } catch {
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          const isAbort  = err instanceof Error && err.name === "AbortError";
+          const isNetwork = err instanceof TypeError;
+          console.error(`[HalalScan] Queue retry failed barcode=${scan.barcode} type=${isAbort ? "timeout" : isNetwork ? "network" : "http"} msg=${errMsg}`);
           if (scan.retryCount >= MAX_RETRIES) {
+            console.warn(`[HalalScan] Max retries reached for barcode=${scan.barcode}, dropping`);
             await localDb.removePending(scan.barcode);
             setPendingBarcodes((prev) => prev.filter((b) => b !== scan.barcode));
           } else {

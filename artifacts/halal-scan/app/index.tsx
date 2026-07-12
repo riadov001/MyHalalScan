@@ -46,6 +46,8 @@ const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 if (!process.env.EXPO_PUBLIC_DOMAIN) {
   console.error("[HalalScan] ⚠️ EXPO_PUBLIC_DOMAIN manquant — les requêtes API échoueront");
 }
+console.log("[HalalScan] EXPO_PUBLIC_DOMAIN =", process.env.EXPO_PUBLIC_DOMAIN ?? "(undefined)");
+console.log("[HalalScan] API_BASE =", API_BASE);
 
 interface ScanState {
   result: ScanResult; productName: string; barcode: string;
@@ -188,20 +190,25 @@ export default function HomeScreen() {
       return;
     }
     try {
+      const requestUrl = `${API_BASE}/api/halal/analyze/${barcode}`;
+      console.log("[HalalScan] Request URL =", requestUrl);
+
       const ctrl = new AbortController();
       const tId = setTimeout(() => ctrl.abort(), 15_000);
       let res: Response;
       try {
-        res = await fetch(`${API_BASE}/api/halal/analyze/${barcode}`, { signal: ctrl.signal });
+        res = await fetch(requestUrl, { signal: ctrl.signal });
       } finally {
         clearTimeout(tId);
       }
+      console.log(`[HalalScan] HTTP ${res.status} ← /api/halal/analyze/${barcode}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as {
         result: ScanResult; productName: string; reason?: string;
         ingredientsText?: string; ingredientsList?: string[];
         source?: "internal_db" | "openfoodfacts" | "ai" | "unknown";
       };
+      console.log(`[HalalScan] Response: result=${json.result} name="${json.productName}" source=${json.source} foundInDb=${(json as Record<string,unknown>).foundInDatabase}`);
 
       // Local custom-ingredient override: if any custom term found in ingredients → HARAM
       let finalResult = json.result;
@@ -232,10 +239,35 @@ export default function HomeScreen() {
         ingredientsText: json.ingredientsText, ingredientsList: json.ingredientsList,
         source: json.source,
       });
-    } catch {
-      await queueOfflineScan(barcode);
-      setScanResult({ result: "unknown", productName: "Connexion impossible", barcode,
-        reason: "Analysé automatiquement dès le retour de la connexion.", isOfflineQueued: true });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const isAbort  = err instanceof Error && err.name === "AbortError";
+      const isNetwork = err instanceof TypeError; // "Failed to fetch" / réseau inaccessible
+      const isHttpErr = !isAbort && !isNetwork;   // throw new Error(`HTTP ${status}`)
+
+      console.error(`[HalalScan] Erreur fetch barcode=${barcode} type=${isAbort ? "timeout" : isNetwork ? "network" : "http"} msg=${errMsg}`);
+
+      if (isHttpErr) {
+        // Le serveur est joignable mais a renvoyé une erreur (5xx, etc.)
+        setScanResult({
+          result: "unknown",
+          productName: "Erreur serveur",
+          barcode,
+          reason: `Le serveur a retourné une erreur (${errMsg}). Réessayez dans quelques instants.`,
+        });
+      } else {
+        // Timeout ou panne réseau → file d'attente offline
+        await queueOfflineScan(barcode);
+        setScanResult({
+          result: "unknown",
+          productName: isAbort ? "Délai dépassé" : "Connexion impossible",
+          barcode,
+          reason: isAbort
+            ? "La requête a expiré. Analysé automatiquement dès le retour de la connexion."
+            : "Impossible de joindre le serveur. Analysé automatiquement dès le retour de la connexion.",
+          isOfflineQueued: true,
+        });
+      }
     } finally { loadingRef.current = false; setLoading(false); }
   }, [getProduct, isWhitelisted, addProduct, queueOfflineScan, isOnline, pendingBarcodes]);
 
