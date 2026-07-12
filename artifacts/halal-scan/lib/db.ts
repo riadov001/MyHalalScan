@@ -27,6 +27,11 @@ export interface CustomIngredient {
   term: string;
 }
 
+export interface AlwaysHalalIngredient {
+  id: number;
+  term: string;
+}
+
 // ─── In-memory fallback (web / test environments) ────────────────────────────
 
 let _memProducts: Record<string, Product> = {};
@@ -34,6 +39,8 @@ let _memPending: Record<string, PendingScan> = {};
 let _memSettings: Record<string, string> = {};
 let _memCustom: CustomIngredient[] = [];
 let _memCustomNextId = 1;
+let _memAlwaysHalal: AlwaysHalalIngredient[] = [];
+let _memAlwaysHalalNextId = 1;
 
 const memDb = {
   async getAllProducts(): Promise<Product[]> {
@@ -82,6 +89,17 @@ const memDb = {
   async removeCustomIngredient(id: number): Promise<void> {
     _memCustom = _memCustom.filter((c) => c.id !== id);
   },
+  async getAllAlwaysHalal(): Promise<AlwaysHalalIngredient[]> {
+    return [..._memAlwaysHalal];
+  },
+  async addAlwaysHalal(term: string): Promise<AlwaysHalalIngredient> {
+    const item: AlwaysHalalIngredient = { id: _memAlwaysHalalNextId++, term };
+    _memAlwaysHalal.push(item);
+    return item;
+  },
+  async removeAlwaysHalal(id: number): Promise<void> {
+    _memAlwaysHalal = _memAlwaysHalal.filter((c) => c.id !== id);
+  },
 };
 
 // ─── SQLite implementation (native only) ─────────────────────────────────────
@@ -121,6 +139,10 @@ async function initDb(): Promise<void> {
           value TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS custom_ingredients (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          term TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS always_halal_ingredients (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           term TEXT NOT NULL UNIQUE
         );
@@ -325,6 +347,45 @@ const sqliteDb = {
       await db.runAsync("DELETE FROM custom_ingredients WHERE id = ?", id);
     } catch {
       await memDb.removeCustomIngredient(id);
+    }
+  },
+
+  async getAllAlwaysHalal(): Promise<AlwaysHalalIngredient[]> {
+    const db = await getDb();
+    if (!db) return memDb.getAllAlwaysHalal();
+    try {
+      return await db.getAllAsync<AlwaysHalalIngredient>(
+        "SELECT id, term FROM always_halal_ingredients ORDER BY id ASC",
+      );
+    } catch {
+      return memDb.getAllAlwaysHalal();
+    }
+  },
+
+  async addAlwaysHalal(term: string): Promise<AlwaysHalalIngredient> {
+    const db = await getDb();
+    if (!db) return memDb.addAlwaysHalal(term);
+    try {
+      const res = await db.runAsync(
+        "INSERT OR IGNORE INTO always_halal_ingredients (term) VALUES (?)", term,
+      );
+      if (res.lastInsertRowId) return { id: res.lastInsertRowId, term };
+      const existing = await db.getFirstAsync<AlwaysHalalIngredient>(
+        "SELECT id, term FROM always_halal_ingredients WHERE term = ?", term,
+      );
+      return existing ?? { id: -1, term };
+    } catch {
+      return memDb.addAlwaysHalal(term);
+    }
+  },
+
+  async removeAlwaysHalal(id: number): Promise<void> {
+    const db = await getDb();
+    if (!db) { await memDb.removeAlwaysHalal(id); return; }
+    try {
+      await db.runAsync("DELETE FROM always_halal_ingredients WHERE id = ?", id);
+    } catch {
+      await memDb.removeAlwaysHalal(id);
     }
   },
 };

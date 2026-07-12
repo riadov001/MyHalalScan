@@ -1,4 +1,3 @@
-import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -17,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import C from "@/constants/colors";
 import { useScanContext } from "@/context/ScanContext";
 import type { Product } from "@/lib/db";
+import * as Haptics from "expo-haptics";
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -42,14 +42,19 @@ function timeAgo(ts: number): string {
   return days === 1 ? "Hier" : `Il y a ${days} j`;
 }
 
-function ProductCard({ item, isWL }: { item: Product; isWL: boolean }) {
+function ProductCard({ item, isWL, onWhitelist }: { item: Product; isWL: boolean; onWhitelist: (barcode: string) => void }) {
   const [open, setOpen] = useState(false);
   const r = isWL ? "halal" : item.result;
   const s = RESULT_STYLE[r] ?? RESULT_STYLE.unknown;
-  const ingList = item.ingredientsList?.length
-    ? item.ingredientsList
-    : (item.ingredientsText ?? "").split(/[,;]\s*/).map(x => x.trim()).filter(Boolean);
+  const ingList = useMemo(() => {
+    const raw = item.ingredientsList?.length
+      ? item.ingredientsList
+      : (item.ingredientsText ?? "").split(/[,;]\s*/).map(x => x.trim()).filter(Boolean);
+    // Deduplicate and sort
+    return [...new Set(raw)].filter(Boolean).sort((a, b) => a.localeCompare(b, "fr"));
+  }, [item.ingredientsList, item.ingredientsText]);
   const hasIng = ingList.length > 0;
+  const canWhitelist = !isWL && (item.result === "haram" || item.result === "warning" || item.result === "unknown");
 
   return (
     <View style={[styles.card, { borderLeftColor: s.border }]}>
@@ -86,13 +91,42 @@ function ProductCard({ item, isWL }: { item: Product; isWL: boolean }) {
 
       {open && ingList.length > 0 && (
         <View style={[styles.ingSection, { borderTopColor: s.border + "20" }]}>
-          {ingList.slice(0, 30).map((ing, i) => (
+          {ingList.map((ing, i) => (
             <View key={i} style={styles.ingRow}>
               <View style={[styles.ingDot, { backgroundColor: s.border }]} />
-              <Text style={styles.ingTxt} numberOfLines={1}>{ing}</Text>
+              <Text style={styles.ingTxt}>{ing}</Text>
             </View>
           ))}
-          {ingList.length > 30 && <Text style={styles.ingMore}>+{ingList.length - 30} autres…</Text>}
+        </View>
+      )}
+
+      {canWhitelist && (
+        <Pressable
+          onPress={() => {
+            Alert.alert(
+              "Marquer comme halal pour moi ?",
+              `"${item.productName}" sera considéré comme halal dans votre historique.`,
+              [
+                { text: "Annuler", style: "cancel" },
+                {
+                  text: "Confirmer",
+                  onPress: () => {
+                    onWhitelist(item.barcode);
+                    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  },
+                },
+              ],
+            );
+          }}
+          style={({ pressed }) => [styles.whitelistBtn, { opacity: pressed ? 0.75 : 1 }]}
+        >
+          <Text style={styles.whitelistTxt}>✓  Marquer comme halal pour moi</Text>
+        </Pressable>
+      )}
+
+      {isWL && (
+        <View style={styles.whitelistedBadge}>
+          <Text style={styles.whitelistedTxt}>✓  Dans votre liste approuvée</Text>
         </View>
       )}
     </View>
@@ -101,7 +135,7 @@ function ProductCard({ item, isWL }: { item: Product; isWL: boolean }) {
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
-  const { products, pendingBarcodes, clearHistory, isWhitelisted } = useScanContext();
+  const { products, pendingBarcodes, clearHistory, isWhitelisted, whitelistProduct } = useScanContext();
   const [filter, setFilter] = useState<Filter>("all");
 
   const allItems = useMemo(
@@ -199,7 +233,7 @@ export default function HistoryScreen() {
         <FlatList
           data={filtered}
           keyExtractor={i => i.barcode}
-          renderItem={({ item }) => <ProductCard item={item} isWL={isWhitelisted(item.barcode)} />}
+          renderItem={({ item }) => <ProductCard item={item} isWL={isWhitelisted(item.barcode)} onWhitelist={whitelistProduct} />}
           contentContainerStyle={[styles.list, { paddingBottom: botPad + 20 }]}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <View style={{ height: 6 }} />}
@@ -298,6 +332,23 @@ const styles = StyleSheet.create({
   ingDot: { width: 4, height: 4, borderRadius: 2, marginTop: 9, flexShrink: 0 },
   ingTxt: { flex: 1, fontSize: 12, color: C.textMuted, lineHeight: 18 },
   ingMore: { fontSize: 11, color: C.textMuted, textAlign: "center", marginTop: 4, fontWeight: "600" },
+
+  whitelistBtn: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(26,175,90,0.25)",
+    paddingVertical: 12, paddingHorizontal: 16,
+    alignItems: "center",
+    backgroundColor: "rgba(26,175,90,0.07)",
+  },
+  whitelistTxt: { fontSize: 14, fontWeight: "700", color: C.halalLight },
+  whitelistedBadge: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(26,175,90,0.20)",
+    paddingVertical: 10, paddingHorizontal: 16,
+    alignItems: "center",
+    backgroundColor: "rgba(26,175,90,0.05)",
+  },
+  whitelistedTxt: { fontSize: 13, fontWeight: "600", color: C.halalLight, opacity: 0.8 },
 
   filterEmpty: { alignItems: "center", paddingVertical: 40, gap: 10 },
   filterEmptyTxt: { fontSize: 16, color: C.textSub },

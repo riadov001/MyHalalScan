@@ -26,6 +26,11 @@ export interface CustomIngredient {
   term: string;
 }
 
+export interface AlwaysHalalIngredient {
+  id: number;
+  term: string;
+}
+
 let _db: SQLite.SQLiteDatabase | null = null;
 
 async function getDb(): Promise<SQLite.SQLiteDatabase> {
@@ -53,6 +58,10 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       value TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS custom_ingredients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      term TEXT NOT NULL UNIQUE
+    );
+    CREATE TABLE IF NOT EXISTS always_halal_ingredients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       term TEXT NOT NULL UNIQUE
     );
@@ -192,5 +201,31 @@ export const localDb = {
   async removeCustomIngredient(id: number): Promise<void> {
     const db = await getDb();
     await db.runAsync("DELETE FROM custom_ingredients WHERE id=?", [id]);
+  },
+
+  async getAllAlwaysHalal(): Promise<AlwaysHalalIngredient[]> {
+    const db = await getDb();
+    return db.getAllAsync<AlwaysHalalIngredient>(
+      "SELECT id, term FROM always_halal_ingredients ORDER BY id ASC",
+    );
+  },
+
+  async addAlwaysHalal(term: string): Promise<AlwaysHalalIngredient> {
+    const db = await getDb();
+    const res = await db.runAsync(
+      "INSERT OR IGNORE INTO always_halal_ingredients(term) VALUES(?)",
+      [term],
+    );
+    if (res.lastInsertRowId) return { id: res.lastInsertRowId, term };
+    const existing = await db.getFirstAsync<AlwaysHalalIngredient>(
+      "SELECT id, term FROM always_halal_ingredients WHERE term=?",
+      [term],
+    );
+    return existing ?? { id: -1, term };
+  },
+
+  async removeAlwaysHalal(id: number): Promise<void> {
+    const db = await getDb();
+    await db.runAsync("DELETE FROM always_halal_ingredients WHERE id=?", [id]);
   },
 };

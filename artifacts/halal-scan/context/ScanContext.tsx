@@ -9,11 +9,11 @@ import React, {
 } from "react";
 import { AppState } from "react-native";
 
-import { localDb, type CustomIngredient, type Product, type ScanResult } from "@/lib/db";
+import { localDb, type AlwaysHalalIngredient, type CustomIngredient, type Product, type ScanResult } from "@/lib/db";
 
 export type { ScanResult };
 export type CachedProduct = Product;
-export type { CustomIngredient };
+export type { CustomIngredient, AlwaysHalalIngredient };
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const MAX_RETRIES = 3;
@@ -25,6 +25,7 @@ interface ScanContextType {
   isDbReady: boolean;
   soundEnabled: boolean;
   customIngredients: CustomIngredient[];
+  alwaysHalalIngredients: AlwaysHalalIngredient[];
   addProduct: (p: Product) => Promise<void>;
   queueOfflineScan: (barcode: string) => Promise<void>;
   whitelistProduct: (barcode: string) => Promise<void>;
@@ -35,6 +36,8 @@ interface ScanContextType {
   setSoundEnabled: (v: boolean) => Promise<void>;
   addCustomIngredient: (term: string) => Promise<void>;
   removeCustomIngredient: (id: number) => Promise<void>;
+  addAlwaysHalal: (term: string) => Promise<void>;
+  removeAlwaysHalal: (id: number) => Promise<void>;
 }
 
 const ScanContext = createContext<ScanContextType | null>(null);
@@ -57,6 +60,7 @@ function containsTerm(haystack: string, term: string): boolean {
 export function checkCustomIngredients(
   ingredientsText: string,
   customIngredients: CustomIngredient[],
+  alwaysHalalIngredients: AlwaysHalalIngredient[] = [],
 ): string | null {
   if (!ingredientsText || customIngredients.length === 0) return null;
   const norm = ingredientsText
@@ -66,9 +70,31 @@ export function checkCustomIngredients(
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ");
   for (const ci of customIngredients) {
-    if (containsTerm(norm, ci.term)) return ci.term;
+    if (containsTerm(norm, ci.term)) {
+      // If this ingredient is in the always-halal list, skip it
+      if (alwaysHalalIngredients.some(ah => containsTerm(norm, ah.term) && ah.term.toLowerCase() === ci.term.toLowerCase())) {
+        continue;
+      }
+      return ci.term;
+    }
   }
   return null;
+}
+
+/** Returns true if the server's reason/result should be overridden to halal because the offending ingredient is in the always-halal list */
+export function checkAlwaysHalalOverride(
+  reason: string | undefined,
+  ingredientsText: string | undefined,
+  alwaysHalal: AlwaysHalalIngredient[],
+): boolean {
+  if (!alwaysHalal.length) return false;
+  const haystack = `${reason ?? ""} ${ingredientsText ?? ""}`
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+  return alwaysHalal.some(ah => containsTerm(haystack, ah.term));
 }
 
 export function ScanProvider({ children }: { children: React.ReactNode }) {
@@ -78,16 +104,18 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [isDbReady, setIsDbReady] = useState(false);
   const [soundEnabled, setSoundEnabledState] = useState(true);
   const [customIngredients, setCustomIngredients] = useState<CustomIngredient[]>([]);
+  const [alwaysHalalIngredients, setAlwaysHalalIngredients] = useState<AlwaysHalalIngredient[]>([]);
   const processingRef = useRef(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [allProducts, allPending, soundVal, customs] = await Promise.all([
+        const [allProducts, allPending, soundVal, customs, alwaysHalals] = await Promise.all([
           localDb.getAllProducts(),
           localDb.getAllPending(),
           localDb.getSetting("sound_enabled"),
           localDb.getAllCustomIngredients(),
+          localDb.getAllAlwaysHalal(),
         ]);
         const map: Record<string, Product> = {};
         for (const p of allProducts) map[p.barcode] = p;
@@ -95,6 +123,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         setPendingBarcodes(allPending.map((p) => p.barcode));
         setSoundEnabledState(soundVal === null ? true : soundVal === "1");
         setCustomIngredients(customs);
+        setAlwaysHalalIngredients(alwaysHalals);
       } catch {
       } finally {
         setIsDbReady(true);
@@ -250,6 +279,21 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     setCustomIngredients((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
+  const addAlwaysHalal = useCallback(async (term: string) => {
+    const trimmed = term.trim().slice(0, 60);
+    if (!trimmed) return;
+    const created = await localDb.addAlwaysHalal(trimmed);
+    setAlwaysHalalIngredients((prev) => {
+      if (prev.some((c) => c.id === created.id)) return prev;
+      return [...prev, created];
+    });
+  }, []);
+
+  const removeAlwaysHalal = useCallback(async (id: number) => {
+    await localDb.removeAlwaysHalal(id);
+    setAlwaysHalalIngredients((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
   return (
     <ScanContext.Provider
       value={{
@@ -259,6 +303,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         isDbReady,
         soundEnabled,
         customIngredients,
+        alwaysHalalIngredients,
         addProduct,
         queueOfflineScan,
         whitelistProduct,
@@ -269,6 +314,8 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         setSoundEnabled,
         addCustomIngredient,
         removeCustomIngredient,
+        addAlwaysHalal,
+        removeAlwaysHalal,
       }}
     >
       {children}

@@ -1,6 +1,5 @@
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Speech from "expo-speech";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -115,21 +114,17 @@ export default function ResultOverlay({
   const overlayStyle = useAnimatedStyle(() => ({ opacity: overlay.value, transform: [{ translateY: sheet.value }] }));
   const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: badge.value }], opacity: badgeA.value }));
 
-  // Voice + haptics
+  // Haptics
   useEffect(() => {
-    if (!isOfflineQueued) {
-      setTimeout(() => Speech.speak(t.speech, { language: "fr-FR", rate: 0.80 }), 400);
-      if (Platform.OS !== "web") {
-        setTimeout(() => {
-          if (result === "halal") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          else if (result === "haram") {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error), 550);
-          } else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        }, 250);
-      }
+    if (!isOfflineQueued && Platform.OS !== "web") {
+      setTimeout(() => {
+        if (result === "halal") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        else if (result === "haram") {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error), 550);
+        } else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }, 250);
     }
-    return () => { Speech.stop(); };
   }, []);
 
   // Countdown
@@ -145,7 +140,6 @@ export default function ResultOverlay({
   const dismiss = () => {
     if (dismissed.current) return;
     dismissed.current = true;
-    Speech.stop();
     overlay.value = withTiming(0, { duration: 240 }, (done) => { if (done) runOnJS(onDismiss)(); });
   };
 
@@ -246,30 +240,6 @@ export default function ResultOverlay({
 
         {/* ── ACTIONS ── */}
         <View style={styles.actions}>
-          {!isOfflineQueued && (
-            <Pressable
-              style={({ pressed }) => [styles.actionSec, { borderColor: "rgba(255,255,255,0.13)", opacity: pressed ? 0.8 : 1 }]}
-              onPress={() => Speech.speak(t.speech, { language: "fr-FR", rate: 0.80 })}
-            >
-              <Text style={styles.actionSecTxt}>🔊  Réécouter le résultat</Text>
-            </Pressable>
-          )}
-
-          {!isOfflineQueued && !isWhitelisted && (result === "warning" || result === "haram" || result === "unknown") && (
-            <Pressable
-              style={({ pressed }) => [styles.actionSec, { borderColor: t.accentBorder, opacity: pressed ? 0.8 : 1 }]}
-              onPress={() => {
-                onWhitelist();
-                Speech.speak("Produit ajouté à votre liste personnelle approuvée.", { language: "fr-FR" });
-                if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              }}
-            >
-              <Text style={[styles.actionSecTxt, { color: t.accent }]}>
-                ✓  Marquer comme halal pour moi
-              </Text>
-            </Pressable>
-          )}
-
           {isWhitelisted && (
             <View style={[styles.actionSec, { borderColor: "rgba(26,175,90,0.35)" }]}>
               <Text style={[styles.actionSecTxt, { color: C.halalLight }]}>✓  Dans votre liste approuvée</Text>
@@ -370,7 +340,7 @@ const styles = StyleSheet.create({
   ingChevron: { fontSize: 11, fontWeight: "700" },
   ingBox: {
     width: "100%", borderWidth: 1, borderRadius: 14,
-    padding: 14, gap: 7, maxHeight: 220,
+    padding: 14, gap: 7,
   },
   ingRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   ingDot: { width: 5, height: 5, borderRadius: 3, marginTop: 9, flexShrink: 0 },

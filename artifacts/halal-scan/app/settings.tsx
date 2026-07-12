@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import C from "@/constants/colors";
-import { useScanContext } from "@/context/ScanContext";
+import { useScanContext, type AlwaysHalalIngredient } from "@/context/ScanContext";
 
 const HARAM: { emoji: string; title: string; items: string[] }[] = [
   {
@@ -170,8 +170,23 @@ function Group({ emoji, title, items, accent }: { emoji: string; title: string; 
   );
 }
 
-function CustomGroup() {
-  const { customIngredients, addCustomIngredient, removeCustomIngredient } = useScanContext();
+function CustomIngredientGroup({
+  accent,
+  emoji,
+  title,
+  hint,
+  items,
+  onAdd,
+  onDelete,
+}: {
+  accent: string;
+  emoji: string;
+  title: string;
+  hint: string;
+  items: { id: number; term: string }[];
+  onAdd: (term: string) => Promise<void>;
+  onDelete: (id: number, term: string) => void;
+}) {
   const [open, setOpen] = useState(true);
   const [inputVal, setInputVal] = useState("");
   const [adding, setAdding] = useState(false);
@@ -183,23 +198,10 @@ function CustomGroup() {
       Alert.alert("Terme trop long", "Maximum 60 caractères.");
       return;
     }
-    await addCustomIngredient(term);
+    await onAdd(term);
     setInputVal("");
     setAdding(false);
   };
-
-  const handleDelete = (id: number, term: string) => {
-    Alert.alert(
-      "Supprimer cet ingrédient ?",
-      `"${term}" ne sera plus surveillé.`,
-      [
-        { text: "Annuler", style: "cancel" },
-        { text: "Supprimer", style: "destructive", onPress: () => removeCustomIngredient(id) },
-      ],
-    );
-  };
-
-  const accent = C.haramLight;
 
   return (
     <View style={[styles.group, { borderLeftColor: accent }]}>
@@ -209,12 +211,12 @@ function CustomGroup() {
         style={styles.groupHead}
       >
         <View style={[styles.groupEmojiWrap, { backgroundColor: accent + "15", borderColor: accent + "30" }]}>
-          <Text style={styles.groupEmoji}>✏️</Text>
+          <Text style={styles.groupEmoji}>{emoji}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.groupTitle}>Mes ingrédients personnalisés</Text>
-          {customIngredients.length > 0 && (
-            <Text style={[styles.customCount, { color: accent }]}>{customIngredients.length} terme{customIngredients.length > 1 ? "s" : ""} surveillé{customIngredients.length > 1 ? "s" : ""}</Text>
+          <Text style={styles.groupTitle}>{title}</Text>
+          {items.length > 0 && (
+            <Text style={[styles.customCount, { color: accent }]}>{items.length} terme{items.length > 1 ? "s" : ""}</Text>
           )}
         </View>
         <View style={[styles.chevWrap, { backgroundColor: accent + "15" }]}>
@@ -224,20 +226,18 @@ function CustomGroup() {
 
       {open && (
         <View style={[styles.groupItems, { borderTopColor: accent + "20", gap: 0 }]}>
-          <Text style={styles.customHint}>
-            Ajoutez ici vos propres termes. Ils déclencheront automatiquement NON HALAL lors d'un scan.
-          </Text>
+          <Text style={styles.customHint}>{hint}</Text>
 
-          {customIngredients.length === 0 && !adding && (
-            <Text style={styles.customEmpty}>Aucun ingrédient personnalisé</Text>
+          {items.length === 0 && !adding && (
+            <Text style={styles.customEmpty}>Aucun ingrédient ajouté</Text>
           )}
 
-          {customIngredients.map((ci) => (
+          {items.filter((ci, idx, arr) => arr.findIndex(x => x.term === ci.term) === idx).map((ci) => (
             <View key={ci.id} style={styles.customItemRow}>
               <View style={[styles.itemDot, { backgroundColor: accent, marginTop: 10 }]} />
               <Text style={[styles.itemText, { flex: 1 }]}>{ci.term}</Text>
               <Pressable
-                onPress={() => handleDelete(ci.id, ci.term)}
+                onPress={() => onDelete(ci.id, ci.term)}
                 hitSlop={10}
                 style={styles.customDeleteBtn}
               >
@@ -252,7 +252,7 @@ function CustomGroup() {
                 style={styles.customInput}
                 value={inputVal}
                 onChangeText={setInputVal}
-                placeholder="ex: huile de poisson…"
+                placeholder="ex: vinaigre de cidre…"
                 placeholderTextColor="rgba(255,255,255,0.3)"
                 autoFocus
                 autoCapitalize="none"
@@ -279,6 +279,60 @@ function CustomGroup() {
         </View>
       )}
     </View>
+  );
+}
+
+function CustomGroup() {
+  const { customIngredients, addCustomIngredient, removeCustomIngredient } = useScanContext();
+
+  const handleDelete = (id: number, term: string) => {
+    Alert.alert(
+      "Supprimer cet ingrédient ?",
+      `"${term}" ne sera plus surveillé.`,
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "Supprimer", style: "destructive", onPress: () => removeCustomIngredient(id) },
+      ],
+    );
+  };
+
+  return (
+    <CustomIngredientGroup
+      accent={C.haramLight}
+      emoji="✏️"
+      title="Mes ingrédients personnalisés"
+      hint="Ajoutez ici vos propres termes. Ils déclencheront automatiquement NON HALAL lors d'un scan."
+      items={customIngredients}
+      onAdd={addCustomIngredient}
+      onDelete={handleDelete}
+    />
+  );
+}
+
+function AlwaysHalalGroup() {
+  const { alwaysHalalIngredients, addAlwaysHalal, removeAlwaysHalal } = useScanContext();
+
+  const handleDelete = (id: number, term: string) => {
+    Alert.alert(
+      "Retirer cet ingrédient ?",
+      `"${term}" sera à nouveau analysé normalement.`,
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "Retirer", style: "destructive", onPress: () => removeAlwaysHalal(id) },
+      ],
+    );
+  };
+
+  return (
+    <CustomIngredientGroup
+      accent={C.halalLight}
+      emoji="✅"
+      title="Mes ingrédients toujours halal"
+      hint="Ces ingrédients seront toujours ignorés par l'algorithme et ne déclencheront jamais NON HALAL."
+      items={alwaysHalalIngredients}
+      onAdd={addAlwaysHalal}
+      onDelete={handleDelete}
+    />
   );
 }
 
@@ -338,7 +392,8 @@ export default function SettingsScreen() {
         <SectionTitle label="À VÉRIFIER" color={C.warningLight} />
         {WARNING.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.warningLight} />)}
 
-        <SectionTitle label="TOUJOURS AUTORISÉ" color={C.halalLight} />
+        <SectionTitle label="TOUJOURS HALAL (MES EXCEPTIONS)" color={C.halalLight} />
+        <AlwaysHalalGroup />
         {HALAL_OK.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent={C.halalLight} />)}
         <SectionTitle label="AUTORISÉS PAR DÉFAUT" color="#1A9A50" />
         {HALAL_ALLOWED.map(g => <Group key={g.title} emoji={g.emoji} title={g.title} items={g.items} accent="#1A9A50" />)}       

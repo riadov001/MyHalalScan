@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import ResultOverlay from "@/components/ResultOverlay";
 import C from "@/constants/colors";
-import { checkCustomIngredients, type ScanResult, useScanContext } from "@/context/ScanContext";
+import { checkAlwaysHalalOverride, checkCustomIngredients, type ScanResult, useScanContext } from "@/context/ScanContext";
 import type { Product } from "@/lib/db";
 
 const { width: W } = Dimensions.get("window");
@@ -77,7 +77,7 @@ export default function HomeScreen() {
     addProduct, queueOfflineScan, whitelistProduct,
     getProduct, isWhitelisted, isOnline, pendingBarcodes,
     processPendingQueue, products, soundEnabled, setSoundEnabled,
-    customIngredients,
+    customIngredients, alwaysHalalIngredients,
   } = useScanContext();
 
   const histCount = Object.keys(products).length;
@@ -146,6 +146,9 @@ export default function HomeScreen() {
   const customIngredientsRef = useRef(customIngredients);
   useEffect(() => { customIngredientsRef.current = customIngredients; }, [customIngredients]);
 
+  const alwaysHalalRef = useRef(alwaysHalalIngredients);
+  useEffect(() => { alwaysHalalRef.current = alwaysHalalIngredients; }, [alwaysHalalIngredients]);
+
   const soundEnabledRef = useRef(soundEnabled);
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
 
@@ -202,15 +205,28 @@ export default function HomeScreen() {
       };
       console.log(`[HalalScan] Response: result=${json.result} name="${json.productName}" source=${json.source} foundInDb=${(json as Record<string,unknown>).foundInDatabase}`);
 
-      // Local custom-ingredient override: if any custom term found in ingredients → HARAM
+      // Build full ingredients text (combine ingredientsText + ingredientsList for best coverage)
+      const fullIngredientsText = [
+        json.ingredientsText ?? "",
+        (json.ingredientsList ?? []).join(", "),
+      ].filter(Boolean).join(", ");
+
       let finalResult = json.result;
       let finalReason = json.reason;
-      const customHit = json.ingredientsText
-        ? checkCustomIngredients(json.ingredientsText, customIngredientsRef.current)
-        : null;
-      if (customHit && finalResult !== "haram") {
-        finalResult = "haram";
-        finalReason = `Ingrédient personnalisé détecté : "${customHit}"`;
+
+      // 1. Always-halal override: if the server flagged an ingredient the user marked as always-halal, revert to halal
+      if (finalResult !== "halal" && checkAlwaysHalalOverride(json.reason, fullIngredientsText, alwaysHalalRef.current)) {
+        finalResult = "halal";
+        finalReason = "Ingrédient dans votre liste « toujours halal »";
+      }
+
+      // 2. Custom-ingredient override: if any personal haram term found → HARAM
+      if (finalResult !== "haram" && fullIngredientsText) {
+        const customHit = checkCustomIngredients(fullIngredientsText, customIngredientsRef.current, alwaysHalalRef.current);
+        if (customHit) {
+          finalResult = "haram";
+          finalReason = `Ingrédient personnalisé détecté : "${customHit}"`;
+        }
       }
 
       const product: Product = {
