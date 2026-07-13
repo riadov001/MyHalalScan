@@ -39,7 +39,7 @@ interface Props {
 interface Theme {
   gradients: [string, string, string];
   accent: string; accentBg: string; accentBorder: string;
-  icon: string; verdict: string; speech: string;
+  icon: string; verdict: string;
   btnColors: [string, string, string];
 }
 
@@ -48,28 +48,24 @@ const THEMES: Record<string, Theme> = {
     gradients: ["#020D06", "#041208", "#02080404"],
     accent: C.halalLight, accentBg: "rgba(26,175,90,0.10)", accentBorder: "rgba(34,204,106,0.25)",
     icon: "✅", verdict: "HALAL",
-    speech: "Ce produit est halal. Vous pouvez le consommer.",
     btnColors: ["#1A9A50", "#137A3E", "#0C5C2E"],
   },
   haram: {
     gradients: ["#0D0202", "#160304", "#090202"],
     accent: C.haramLight, accentBg: "rgba(220,53,69,0.10)", accentBorder: "rgba(240,64,85,0.25)",
     icon: "❌", verdict: "NON HALAL",
-    speech: "Attention ! Ce produit contient un ingrédient interdit. Ne le consommez pas.",
     btnColors: ["#C82030", "#A01828", "#781018"],
   },
   warning: {
     gradients: ["#0C0500", "#160900", "#090400"],
     accent: C.warningLight, accentBg: "rgba(232,146,26,0.10)", accentBorder: "rgba(245,168,58,0.25)",
     icon: "⚠️", verdict: "À VÉRIFIER",
-    speech: "Attention, vérification recommandée pour ce produit.",
     btnColors: ["#D08000", "#A86400", "#804C00"],
   },
   unknown: {
     gradients: ["#060A07", "#0A0F0B", "#050806"],
     accent: C.textSub, accentBg: "rgba(154,181,165,0.08)", accentBorder: "rgba(154,181,165,0.18)",
     icon: "❓", verdict: "INCONNU",
-    speech: "Ce produit n'a pas pu être analysé.",
     btnColors: ["#3A5C44", "#2C4434", "#1E2E24"],
   },
 };

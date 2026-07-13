@@ -22,7 +22,6 @@
         "NSPhotoLibraryUsageDescription": "HalalScan accède à votre photothèque pour scanner les codes-barres depuis vos photos.",
         "NSPhotoLibraryAddUsageDescription": "HalalScan peut enregistrer des captures dans votre photothèque.",
         "NSMicrophoneUsageDescription": "HalalScan n'utilise pas le microphone. Cette autorisation est requise par le framework caméra.",
-        "NSSpeechRecognitionUsageDescription": "HalalScan utilise la synthèse vocale pour annoncer les résultats halal à voix haute.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -31,8 +30,7 @@
       "permissions": [
         "CAMERA",
         "VIBRATE",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
@@ -43,12 +41,7 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      "expo-router",
       [
         "expo-camera",
         {

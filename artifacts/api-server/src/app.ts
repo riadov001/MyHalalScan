@@ -29,6 +29,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.get("/", (_req, res) => {
+  res.json({ name: "HalalScan API", status: "ok", version: "1.2.07" });
+});
+
 app.use("/api", router);
 
 export default app;
