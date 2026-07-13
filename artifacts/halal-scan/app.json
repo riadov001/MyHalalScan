@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "HalalScan",
-    "slug": "myhalalscan",
+    "slug": "halalscan",
     "version": "1.2.07",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
