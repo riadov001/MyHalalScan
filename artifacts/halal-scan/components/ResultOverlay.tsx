@@ -215,37 +215,50 @@ export default function ResultOverlay({
 
         {/* ── INGREDIENTS ── */}
         {hasIng && (
-          <Pressable
-            style={[styles.ingToggle, { borderColor: "rgba(255,255,255,0.1)" }]}
-            onPress={() => setShowIng(v => !v)}
-          >
-            <Text style={styles.ingToggleTxt}>🧪  Ingrédients analysés ({ingList.length})</Text>
-            <Text style={[styles.ingChevron, { color: t.accent }]}>{showIng ? "▲" : "▼"}</Text>
-          </Pressable>
-        )}
-
-        {showIng && (
-          <View style={[styles.ingBox, { borderColor: "rgba(255,255,255,0.07)" }]}>
-            {ingList.slice(0, 60).map((ing, i) => (
-              <View key={i} style={styles.ingRow}>
-                <View style={[styles.ingDot, { backgroundColor: t.accent }]} />
-                <Text style={styles.ingTxt} numberOfLines={2}>{ing}</Text>
+          <View style={styles.ingSection}>
+            {/* Header row */}
+            <Pressable style={styles.ingHeader} onPress={() => setShowIng(v => !v)}>
+              <View style={styles.ingHeaderLeft}>
+                <View style={[styles.ingHeaderDot, { backgroundColor: t.accent }]} />
+                <Text style={styles.ingHeaderTxt}>Ingrédients analysés</Text>
+                <View style={[styles.ingCountPill, { backgroundColor: t.accentBg, borderColor: t.accentBorder }]}>
+                  <Text style={[styles.ingCountTxt, { color: t.accent }]}>{ingList.length}</Text>
+                </View>
               </View>
-            ))}
-            {ingList.length > 60 && (
-              <Text style={styles.ingMore}>+{ingList.length - 60} autres</Text>
+              <View style={[styles.ingChevronWrap, { borderColor: t.accentBorder }]}>
+                <Text style={[styles.ingChevron, { color: t.accent }]}>{showIng ? "▲" : "▼"}</Text>
+              </View>
+            </Pressable>
+
+            {/* Pills grid */}
+            {showIng && (
+              <View style={styles.ingPillsWrap}>
+                {ingList.slice(0, 72).map((ing, i) => (
+                  <View key={i} style={[styles.ingPill, { backgroundColor: "#111C15", borderColor: "#1E3025" }]}>
+                    <Text style={styles.ingPillTxt} numberOfLines={1}>{ing}</Text>
+                  </View>
+                ))}
+                {ingList.length > 72 && (
+                  <View style={[styles.ingPill, { backgroundColor: t.accentBg, borderColor: t.accentBorder }]}>
+                    <Text style={[styles.ingPillTxt, { color: t.accent, fontWeight: "700" }]}>
+                      +{ingList.length - 72}
+                    </Text>
+                  </View>
+                )}
+              </View>
             )}
           </View>
         )}
 
-        {/* ── ACTIONS ── */}
-        <View style={styles.actions}>
-          {isWhitelisted && (
-            <View style={[styles.actionSec, { borderColor: "rgba(26,175,90,0.35)" }]}>
-              <Text style={[styles.actionSecTxt, { color: C.halalLight }]}>✓  Dans votre liste approuvée</Text>
+        {/* ── WHITELISTED BADGE ── */}
+        {isWhitelisted && (
+          <View style={styles.wlBadge}>
+            <View style={styles.wlBadgeIcon}>
+              <Text style={styles.wlBadgeIconTxt}>✓</Text>
             </View>
-          )}
-        </View>
+            <Text style={styles.wlBadgeTxt}>Dans votre liste approuvée</Text>
+          </View>
+        )}
 
         {/* ── MAIN CTA ── */}
         <Pressable
@@ -317,13 +330,13 @@ const styles = StyleSheet.create({
   },
   sourceTxt: { fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
 
-  // reason
+  // reason card — solid, no transparency
   reasonCard: {
-    width: "100%", borderLeftWidth: 4,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 12, padding: 16, gap: 8,
-    borderTopRightRadius: 12, borderBottomRightRadius: 12,
-    borderTopLeftRadius: 4, borderBottomLeftRadius: 4,
+    width: "100%",
+    backgroundColor: "#0D1A10",
+    borderRadius: 16, borderWidth: 1, borderColor: "#1A2E1E",
+    borderLeftWidth: 4,
+    padding: 18, gap: 10,
   },
   reasonBadge: {
     fontSize: 10, fontWeight: "900", letterSpacing: 1.5,
@@ -331,33 +344,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 4,
     alignSelf: "flex-start",
   },
-  reasonText: { fontSize: 16, color: "rgba(255,255,255,0.82)", lineHeight: 24, fontWeight: "500" },
+  reasonText: { fontSize: 16, color: "#D4E8D9", lineHeight: 26, fontWeight: "500" },
 
-  // ingredients
-  ingToggle: {
-    width: "100%", borderWidth: 1, borderRadius: 14,
-    flexDirection: "row", alignItems: "center",
+  // ingredient section — premium solid card
+  ingSection: {
+    width: "100%",
+    backgroundColor: "#0A1610",
+    borderRadius: 18, borderWidth: 1, borderColor: "#182416",
+    overflow: "hidden",
+  },
+  ingHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingVertical: 15, paddingHorizontal: 18,
+    backgroundColor: "#0D1B12",
+  },
+  ingHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  ingHeaderDot: { width: 7, height: 7, borderRadius: 4 },
+  ingHeaderTxt: {
+    fontSize: 15, fontWeight: "700", color: "#C8DED0", letterSpacing: 0.2,
+  },
+  ingCountPill: {
+    borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: 9, paddingVertical: 2,
+  },
+  ingCountTxt: { fontSize: 12, fontWeight: "800", letterSpacing: 0.5 },
+  ingChevronWrap: {
+    width: 28, height: 28, borderRadius: 8, borderWidth: 1,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  ingChevron: { fontSize: 10, fontWeight: "800" },
+
+  // pills grid
+  ingPillsWrap: {
+    flexDirection: "row", flexWrap: "wrap", gap: 7,
+    paddingHorizontal: 14, paddingVertical: 14,
+    borderTopWidth: 1, borderTopColor: "#182416",
+  },
+  ingPill: {
+    borderWidth: 1, borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 6,
+    maxWidth: "100%",
+  },
+  ingPillTxt: {
+    fontSize: 12, fontWeight: "600", color: "#8CB09A", letterSpacing: 0.1,
+  },
+
+  // whitelisted badge
+  wlBadge: {
+    width: "100%", flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: "#041209",
+    borderRadius: 14, borderWidth: 1, borderColor: "#1A5C35",
     paddingVertical: 14, paddingHorizontal: 16,
   },
-  ingToggleTxt: { flex: 1, fontSize: 16, color: "rgba(255,255,255,0.75)", fontWeight: "600" },
-  ingChevron: { fontSize: 11, fontWeight: "700" },
-  ingBox: {
-    width: "100%", borderWidth: 1, borderRadius: 14,
-    padding: 14, gap: 7,
+  wlBadgeIcon: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: "#1A5C35",
+    alignItems: "center", justifyContent: "center",
   },
-  ingRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  ingDot: { width: 5, height: 5, borderRadius: 3, marginTop: 9, flexShrink: 0 },
-  ingTxt: { flex: 1, fontSize: 13, color: "rgba(255,255,255,0.50)", lineHeight: 20 },
-  ingMore: { fontSize: 12, color: "rgba(255,255,255,0.30)", textAlign: "center", fontWeight: "600", marginTop: 4 },
-
-  // actions
-  actions: { width: "100%", gap: 8 },
-  actionSec: {
-    borderWidth: 1, borderRadius: 14,
-    paddingVertical: 15, paddingHorizontal: 18,
-    width: "100%", alignItems: "center",
-  },
-  actionSecTxt: { fontSize: 16, fontWeight: "600", color: "rgba(255,255,255,0.72)", textAlign: "center" },
+  wlBadgeIconTxt: { fontSize: 14, color: "#22CC6A", fontWeight: "900" },
+  wlBadgeTxt: { fontSize: 15, fontWeight: "600", color: "#22CC6A" },
 
   // CTA
   ctaWrap: {

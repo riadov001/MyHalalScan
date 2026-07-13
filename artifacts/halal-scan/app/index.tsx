@@ -567,7 +567,7 @@ export default function HomeScreen() {
 
         {/* Solid dark mask — only the scan frame window shows the camera */}
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <View style={styles.scanMaskV} />
+          <View style={[styles.scanMaskV, { flex: 1 }]} />
           <View style={{ flexDirection: "row", height: FRAME_H }}>
             <View style={styles.scanMaskH} />
             <View style={{ width: FRAME_W }} />
