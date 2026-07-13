@@ -1,0 +1,53 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: #060D09;
+  --color-foreground: #EEF4F0;
+  --color-border: #192C20;
+  --color-input: #192C20;
+  --color-ring: #C8963C;
+
+  --color-card: #0C1912;
+  --color-card-foreground: #EEF4F0;
+  --color-card-border: #192C20;
+
+  --color-primary: #C8963C;
+  --color-primary-foreground: #060D09;
+
+  --color-muted: #0C1912;
+  --color-muted-foreground: #9AB5A5;
+
+  --font-sans: 'Inter', sans-serif;
+}
+
+:root {
+  --background: 146 36% 4%; 
+  --foreground: 140 25% 95%; 
+  --border: 142 27% 14%; 
+  --card: 148 35% 7%;
+  --card-foreground: 140 25% 95%;
+  --card-border: 142 27% 14%;
+  --primary: 39 57% 51%; 
+  --primary-foreground: 146 36% 4%;
+  --muted: 148 35% 7%;
+  --muted-foreground: 144 15% 65%;
+  
+  --radius: 0.75rem;
+}
+
+.dark {
+  /* This app is exclusively dark theme */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground overflow-x-hidden;
+  }
+}
