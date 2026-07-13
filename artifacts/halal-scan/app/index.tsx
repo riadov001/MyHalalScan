@@ -299,10 +299,13 @@ export default function HomeScreen() {
         setLoading(false);
         cooldown.current = false;
         lastBarcode.current = null;
-        processBarcode(codes[0].data);
+        await processBarcode(codes[0].data);
         return;
       }
-    } catch { /* scan API failed */ }
+    } catch (err) {
+      console.warn("[HalalScan] Camera.scanFromURLAsync error:", err instanceof Error ? err.message : String(err));
+      /* scan API failed — fall through to "no barcode" message */
+    }
     // No barcode found in image
     loadingRef.current = false;
     setLoading(false);
@@ -430,15 +433,19 @@ export default function HomeScreen() {
       if (picked.canceled || !picked.assets?.[0]) return;
 
       const asset = picked.assets[0];
-      const uri = asset.uri.startsWith("file://") ? asset.uri : `file://${asset.uri}`;
+      // Use the URI as-is — ImagePicker already gives a valid scheme (file:// on iOS, content:// on Android).
+      // Do NOT blindly prepend file:// as it corrupts Android content:// URIs.
+      const rawUri = asset.uri;
+      const uri = rawUri.includes("://") ? rawUri : `file://${rawUri}`;
 
       loadingRef.current = true;
       setLoading(true);
       // Try barcode on all platforms (iOS and Android)
       await tryScanFromImage(uri);
-    } catch {
+    } catch (err) {
       loadingRef.current = false;
       setLoading(false);
+      console.warn("[HalalScan] Gallery error:", err instanceof Error ? err.message : String(err));
       Alert.alert("Erreur galerie", "Impossible de lire cette image.");
     }
   }, [tryScanFromImage]);

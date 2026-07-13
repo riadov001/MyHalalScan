@@ -150,6 +150,9 @@ async function initDb(): Promise<void> {
       try {
         await _db.execAsync("ALTER TABLE products ADD COLUMN photo_path TEXT");
       } catch { /* column already exists */ }
+      try {
+        await _db.execAsync("ALTER TABLE products ADD COLUMN source TEXT");
+      } catch { /* column already exists */ }
       _dbReady = true;
     } catch (e) {
       _db = null;
@@ -173,7 +176,7 @@ const sqliteDb = {
         barcode: string; result: string; productName: string;
         timestamp: number; reason: string | null;
         ingredientsText: string | null; ingredientsList: string | null;
-        isWhitelisted: number; photo_path: string | null;
+        isWhitelisted: number; photo_path: string | null; source: string | null;
       }>("SELECT * FROM products ORDER BY timestamp DESC");
       return rows.map((r) => ({
         barcode: r.barcode,
@@ -185,6 +188,7 @@ const sqliteDb = {
         ingredientsList: r.ingredientsList ? JSON.parse(r.ingredientsList) as string[] : undefined,
         isWhitelisted: r.isWhitelisted === 1,
         photoPath: r.photo_path ?? undefined,
+        source: (r.source ?? undefined) as Product["source"],
       }));
     } catch {
       return memDb.getAllProducts();
@@ -197,14 +201,15 @@ const sqliteDb = {
     try {
       await db.runAsync(
         `INSERT OR REPLACE INTO products
-          (barcode, result, productName, timestamp, reason, ingredientsText, ingredientsList, isWhitelisted, photo_path)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (barcode, result, productName, timestamp, reason, ingredientsText, ingredientsList, isWhitelisted, photo_path, source)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         p.barcode, p.result, p.productName, p.timestamp,
         p.reason ?? null,
         p.ingredientsText ?? null,
         p.ingredientsList ? JSON.stringify(p.ingredientsList) : null,
         p.isWhitelisted ? 1 : 0,
         p.photoPath ?? null,
+        p.source ?? null,
       );
     } catch {
       await memDb.upsertProduct(p);
