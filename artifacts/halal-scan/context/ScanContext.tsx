@@ -52,6 +52,7 @@ interface ScanContextType {
   addSeedProduct: (barcode: string, productName: string, result: ScanResult, ingredientsText?: string, origin?: string) => Promise<void>;
   updateSeedProduct: (p: SeedProduct) => Promise<void>;
   removeSeedProduct: (barcode: string) => Promise<void>;
+  clearAllData: () => Promise<void>;
 }
 
 const ScanContext = createContext<ScanContextType | null>(null);
@@ -369,6 +370,16 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     setSeedProducts((prev) => prev.filter((s) => s.barcode !== barcode));
   }, []);
 
+  /** Wipe all personal data: history, pending queue, custom ingredients, always-halal list.
+   *  Seed products and app settings are preserved. */
+  const clearAllData = useCallback(async () => {
+    await localDb.clearAllData();
+    setProducts({});
+    setPendingBarcodes([]);
+    setCustomIngredients([]);
+    setAlwaysHalalIngredients([]);
+  }, []);
+
   return (
     <ScanContext.Provider
       value={{
@@ -396,6 +407,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         addSeedProduct,
         updateSeedProduct,
         removeSeedProduct,
+        clearAllData,
       }}
     >
       {children}

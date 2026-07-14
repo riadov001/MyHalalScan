@@ -145,6 +145,14 @@ const memDb = {
   async deleteSeedProduct(barcode: string): Promise<void> {
     delete _memSeed[barcode];
   },
+  async clearAllData(): Promise<void> {
+    _products = {};
+    _pending = [];
+    _customIngredients = [];
+    _alwaysHalal = [];
+    _nextCustomId = 1;
+    _nextHalalId = 1;
+  },
 };
 
 // ─── SQLite implementation (native only, dead code on native — Metro resolves db.native.ts first) ─────
@@ -408,6 +416,9 @@ const sqliteDb = {
   },
   async deleteSeedProduct(barcode: string): Promise<void> {
     await memDb.deleteSeedProduct(barcode);
+  },
+  async clearAllData(): Promise<void> {
+    await memDb.clearAllData();
   },
 };
 

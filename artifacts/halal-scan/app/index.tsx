@@ -79,7 +79,7 @@ export default function HomeScreen() {
     addProduct, queueOfflineScan, whitelistProduct,
     getProduct, isWhitelisted, isOnline, pendingBarcodes,
     processPendingQueue, products, soundEnabled, setSoundEnabled,
-    customIngredients, alwaysHalalIngredients, getSeedByBarcode,
+    customIngredients, alwaysHalalIngredients, getSeedByBarcode, clearAllData,
   } = useScanContext();
 
   const histCount = Object.keys(products).length;
@@ -875,6 +875,31 @@ export default function HomeScreen() {
             >
               <Text style={styles.menuEmoji}>🗄️</Text>
               <Text style={styles.menuTxt}>Base de données halal</Text>
+            </Pressable>
+            <View style={styles.menuDivider} />
+            <Pressable
+              style={[styles.menuItem, styles.menuItemDanger]}
+              onPress={() => {
+                setMenuOpen(false);
+                Alert.alert(
+                  "Supprimer toutes mes données ?",
+                  "Cette action supprimera définitivement :\n\n• L'historique de scans\n• La file d'attente hors ligne\n• Vos ingrédients personnalisés\n• Votre liste « toujours halal »\n\nLa base de données halal intégrée et vos préférences sont conservées.",
+                  [
+                    { text: "Annuler", style: "cancel" },
+                    {
+                      text: "Tout supprimer",
+                      style: "destructive",
+                      onPress: async () => {
+                        await clearAllData();
+                        Alert.alert("Données supprimées", "Toutes vos données personnelles ont été effacées.");
+                      },
+                    },
+                  ],
+                );
+              }}
+            >
+              <Text style={styles.menuEmoji}>🗑️</Text>
+              <Text style={[styles.menuTxt, styles.menuTxtDanger]}>Supprimer mes données</Text>
             </Pressable>
             <View style={styles.menuDivider} />
             <View style={styles.menuSoundRow}>

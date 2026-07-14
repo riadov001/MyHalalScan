@@ -346,4 +346,16 @@ export const localDb = {
     const db = await getDb();
     await db.runAsync("DELETE FROM seed_products WHERE barcode=?", [barcode]);
   },
+
+  /** Reset all personal data: history, pending queue, custom ingredients, always-halal list.
+   *  Leaves seed_products, seed_meta, and app_settings intact. */
+  async clearAllData(): Promise<void> {
+    const db = await getDb();
+    await db.withTransactionAsync(async () => {
+      await db.runAsync("DELETE FROM products");
+      await db.runAsync("DELETE FROM pending_scans");
+      await db.runAsync("DELETE FROM custom_ingredients");
+      await db.runAsync("DELETE FROM always_halal_ingredients");
+    });
+  },
 };
