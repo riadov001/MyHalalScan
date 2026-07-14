@@ -97,6 +97,48 @@ export function checkAlwaysHalalOverride(
   return alwaysHalal.some(ah => containsTerm(haystack, ah.term));
 }
 
+/**
+ * Recomputes the effective result/reason from the server's RAW result (before any user-list
+ * override) plus the user's current custom/always-halal ingredient lists. This must be re-run
+ * every time those lists change or a cached/history product is displayed -- never trust a
+ * previously-stored `result`/`reason`, since those are frozen at scan time and go stale the
+ * moment the user edits their lists.
+ */
+export function applyIngredientOverrides(
+  rawResult: ScanResult,
+  rawReason: string | undefined,
+  ingredientsText: string | undefined,
+  ingredientsList: string[] | undefined,
+  customIngredients: CustomIngredient[],
+  alwaysHalalIngredients: AlwaysHalalIngredient[],
+): { result: ScanResult; reason: string | undefined } {
+  const fullIngredientsText = [
+    ingredientsText ?? "",
+    (ingredientsList ?? []).join(", "),
+  ].filter(Boolean).join(", ");
+
+  let result = rawResult;
+  let reason = rawReason;
+
+  // 1. Always-halal override: if the server flagged an ingredient the user marked as always-halal, revert to halal
+  if (result !== "halal" && checkAlwaysHalalOverride(rawReason, fullIngredientsText, alwaysHalalIngredients)) {
+    result = "halal";
+    reason = "Ingrédient dans votre liste « toujours halal »";
+    return { result, reason };
+  }
+
+  // 2. Custom-ingredient override: if any personal haram term found → HARAM
+  if (result !== "haram" && fullIngredientsText) {
+    const customHit = checkCustomIngredients(fullIngredientsText, customIngredients, alwaysHalalIngredients);
+    if (customHit) {
+      result = "haram";
+      reason = `Ingrédient personnalisé détecté : "${customHit}"`;
+    }
+  }
+
+  return { result, reason };
+}
+
 export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Record<string, Product>>({});
   const [pendingBarcodes, setPendingBarcodes] = useState<string[]>([]);
@@ -106,6 +148,13 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [customIngredients, setCustomIngredients] = useState<CustomIngredient[]>([]);
   const [alwaysHalalIngredients, setAlwaysHalalIngredients] = useState<AlwaysHalalIngredient[]>([]);
   const processingRef = useRef(false);
+
+  // Kept in sync so processPendingQueue (a stable callback) always reads the
+  // latest ingredient lists instead of a stale closure.
+  const customIngredientsRef = useRef(customIngredients);
+  useEffect(() => { customIngredientsRef.current = customIngredients; }, [customIngredients]);
+  const alwaysHalalRef = useRef(alwaysHalalIngredients);
+  useEffect(() => { alwaysHalalRef.current = alwaysHalalIngredients; }, [alwaysHalalIngredients]);
 
   useEffect(() => {
     (async () => {
@@ -185,16 +234,28 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
             ingredientsList?: string[];
             source?: "internal_db" | "openfoodfacts" | "ai" | "unknown";
           };
+          // Apply the user's custom/always-halal ingredient lists to the raw server
+          // result -- otherwise scans queued while offline would skip personal overrides.
+          const { result: finalResult, reason: finalReason } = applyIngredientOverrides(
+            json.result,
+            json.reason,
+            json.ingredientsText,
+            json.ingredientsList,
+            customIngredientsRef.current,
+            alwaysHalalRef.current,
+          );
           const product: Product = {
             barcode: scan.barcode,
-            result: json.result,
+            result: finalResult,
             productName: json.productName,
             timestamp: scan.timestamp,
-            reason: json.reason,
+            reason: finalReason,
             ingredientsText: json.ingredientsText,
             ingredientsList: json.ingredientsList,
             isWhitelisted: false,
             source: json.source,
+            rawResult: json.result,
+            rawReason: json.reason,
           };
           await localDb.upsertProduct(product);
           await localDb.removePending(scan.barcode);

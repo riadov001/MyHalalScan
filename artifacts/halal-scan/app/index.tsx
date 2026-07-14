@@ -32,7 +32,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ResultOverlay from "@/components/ResultOverlay";
 import { SPIFooter } from "@/components/SPIFooter";
 import C from "@/constants/colors";
-import { checkAlwaysHalalOverride, checkCustomIngredients, type ScanResult, useScanContext } from "@/context/ScanContext";
+import { applyIngredientOverrides, type ScanResult, useScanContext } from "@/context/ScanContext";
 import type { Product } from "@/lib/db";
 
 const { width: W } = Dimensions.get("window");
@@ -169,10 +169,31 @@ export default function HomeScreen() {
     const cached = getProduct(barcode);
     if (cached && !pendingBarcodes.includes(barcode)) {
       loadingRef.current = false; setLoading(false);
+      // Always recompute from the RAW server result against the user's CURRENT ingredient
+      // lists — a cached product must never display a stale override from before the user
+      // added/removed a custom or always-halal ingredient.
+      const { result: recomputedResult, reason: recomputedReason } = applyIngredientOverrides(
+        cached.rawResult ?? cached.result,
+        cached.rawReason ?? cached.reason,
+        cached.ingredientsText,
+        cached.ingredientsList,
+        customIngredientsRef.current,
+        alwaysHalalRef.current,
+      );
+      if (recomputedResult !== cached.result || recomputedReason !== cached.reason) {
+        const updated: Product = {
+          ...cached,
+          rawResult: cached.rawResult ?? cached.result,
+          rawReason: cached.rawReason ?? cached.reason,
+          result: recomputedResult,
+          reason: recomputedReason,
+        };
+        await addProduct(updated);
+      }
       setScanResult({
-        result: isWhitelisted(barcode) ? "halal" : cached.result,
+        result: isWhitelisted(barcode) ? "halal" : recomputedResult,
         productName: cached.productName, barcode,
-        reason: cached.reason, ingredientsText: cached.ingredientsText,
+        reason: recomputedReason, ingredientsText: cached.ingredientsText,
         ingredientsList: cached.ingredientsList,
         source: cached.source,
       });
@@ -206,35 +227,21 @@ export default function HomeScreen() {
       };
       console.log(`[HalalScan] Response: result=${json.result} name="${json.productName}" source=${json.source} foundInDb=${(json as Record<string,unknown>).foundInDatabase}`);
 
-      // Build full ingredients text (combine ingredientsText + ingredientsList for best coverage)
-      const fullIngredientsText = [
-        json.ingredientsText ?? "",
-        (json.ingredientsList ?? []).join(", "),
-      ].filter(Boolean).join(", ");
-
-      let finalResult = json.result;
-      let finalReason = json.reason;
-
-      // 1. Always-halal override: if the server flagged an ingredient the user marked as always-halal, revert to halal
-      if (finalResult !== "halal" && checkAlwaysHalalOverride(json.reason, fullIngredientsText, alwaysHalalRef.current)) {
-        finalResult = "halal";
-        finalReason = "Ingrédient dans votre liste « toujours halal »";
-      }
-
-      // 2. Custom-ingredient override: if any personal haram term found → HARAM
-      if (finalResult !== "haram" && fullIngredientsText) {
-        const customHit = checkCustomIngredients(fullIngredientsText, customIngredientsRef.current, alwaysHalalRef.current);
-        if (customHit) {
-          finalResult = "haram";
-          finalReason = `Ingrédient personnalisé détecté : "${customHit}"`;
-        }
-      }
+      const { result: finalResult, reason: finalReason } = applyIngredientOverrides(
+        json.result,
+        json.reason,
+        json.ingredientsText,
+        json.ingredientsList,
+        customIngredientsRef.current,
+        alwaysHalalRef.current,
+      );
 
       const product: Product = {
         barcode, result: finalResult, productName: json.productName, timestamp: Date.now(),
         reason: finalReason, ingredientsText: json.ingredientsText,
         ingredientsList: json.ingredientsList, isWhitelisted: false,
         source: json.source,
+        rawResult: json.result, rawReason: json.reason,
       };
       await addProduct(product);
       setScanResult({

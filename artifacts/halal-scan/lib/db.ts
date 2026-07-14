@@ -14,6 +14,10 @@ export interface Product {
   isWhitelisted: boolean;
   photoPath?: string;
   source?: "internal_db" | "openfoodfacts" | "unknown" | "ai";
+  /** Result/reason as returned by the server, before applying the user's custom/always-halal ingredient lists.
+   * Kept so overrides can be recomputed whenever those lists change, instead of being frozen at scan time. */
+  rawResult?: ScanResult;
+  rawReason?: string;
 }
 
 export interface PendingScan {
@@ -153,6 +157,12 @@ async function initDb(): Promise<void> {
       try {
         await _db.execAsync("ALTER TABLE products ADD COLUMN source TEXT");
       } catch { /* column already exists */ }
+      try {
+        await _db.execAsync("ALTER TABLE products ADD COLUMN rawResult TEXT");
+      } catch { /* column already exists */ }
+      try {
+        await _db.execAsync("ALTER TABLE products ADD COLUMN rawReason TEXT");
+      } catch { /* column already exists */ }
       _dbReady = true;
     } catch (e) {
       _db = null;
@@ -177,6 +187,7 @@ const sqliteDb = {
         timestamp: number; reason: string | null;
         ingredientsText: string | null; ingredientsList: string | null;
         isWhitelisted: number; photo_path: string | null; source: string | null;
+        rawResult: string | null; rawReason: string | null;
       }>("SELECT * FROM products ORDER BY timestamp DESC");
       return rows.map((r) => ({
         barcode: r.barcode,
@@ -189,6 +200,8 @@ const sqliteDb = {
         isWhitelisted: r.isWhitelisted === 1,
         photoPath: r.photo_path ?? undefined,
         source: (r.source ?? undefined) as Product["source"],
+        rawResult: (r.rawResult ?? undefined) as ScanResult | undefined,
+        rawReason: r.rawReason ?? undefined,
       }));
     } catch {
       return memDb.getAllProducts();
@@ -201,8 +214,8 @@ const sqliteDb = {
     try {
       await db.runAsync(
         `INSERT OR REPLACE INTO products
-          (barcode, result, productName, timestamp, reason, ingredientsText, ingredientsList, isWhitelisted, photo_path, source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (barcode, result, productName, timestamp, reason, ingredientsText, ingredientsList, isWhitelisted, photo_path, source, rawResult, rawReason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         p.barcode, p.result, p.productName, p.timestamp,
         p.reason ?? null,
         p.ingredientsText ?? null,
@@ -210,6 +223,8 @@ const sqliteDb = {
         p.isWhitelisted ? 1 : 0,
         p.photoPath ?? null,
         p.source ?? null,
+        p.rawResult ?? null,
+        p.rawReason ?? null,
       );
     } catch {
       await memDb.upsertProduct(p);

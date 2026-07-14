@@ -13,6 +13,10 @@ export interface Product {
   isWhitelisted: boolean;
   photoPath?: string;
   source?: "internal_db" | "openfoodfacts" | "unknown" | "ai";
+  /** Result/reason as returned by the server, before applying the user's custom/always-halal ingredient lists.
+   * Kept so overrides can be recomputed whenever those lists change, instead of being frozen at scan time. */
+  rawResult?: ScanResult;
+  rawReason?: string;
 }
 
 export interface PendingScan {
@@ -68,6 +72,8 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
   `);
   try { await _db.execAsync("ALTER TABLE products ADD COLUMN photo_path TEXT"); } catch { /* already exists */ }
   try { await _db.execAsync("ALTER TABLE products ADD COLUMN source TEXT"); } catch { /* already exists */ }
+  try { await _db.execAsync("ALTER TABLE products ADD COLUMN raw_result TEXT"); } catch { /* already exists */ }
+  try { await _db.execAsync("ALTER TABLE products ADD COLUMN raw_reason TEXT"); } catch { /* already exists */ }
   return _db;
 }
 
@@ -76,6 +82,7 @@ type ProductRow = {
   reason: string | null; ingredients_text: string | null;
   ingredients_list: string | null; is_whitelisted: number;
   photo_path: string | null; source: string | null;
+  raw_result: string | null; raw_reason: string | null;
 };
 
 function rowToProduct(r: ProductRow): Product {
@@ -90,6 +97,8 @@ function rowToProduct(r: ProductRow): Product {
     isWhitelisted: r.is_whitelisted === 1,
     photoPath: r.photo_path ?? undefined,
     source: (r.source ?? undefined) as Product["source"],
+    rawResult: (r.raw_result ?? undefined) as ScanResult | undefined,
+    rawReason: r.raw_reason ?? undefined,
   };
 }
 
@@ -106,14 +115,15 @@ export const localDb = {
     await db.runAsync(
       `INSERT OR REPLACE INTO products
         (barcode, result, product_name, timestamp, reason, ingredients_text, ingredients_list,
-         is_whitelisted, photo_path, source)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+         is_whitelisted, photo_path, source, raw_result, raw_reason)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         p.barcode, p.result, p.productName, p.timestamp,
         p.reason ?? null, p.ingredientsText ?? null,
         p.ingredientsList ? JSON.stringify(p.ingredientsList) : null,
         p.isWhitelisted ? 1 : 0,
         p.photoPath ?? null, p.source ?? null,
+        p.rawResult ?? null, p.rawReason ?? null,
       ],
     );
   },

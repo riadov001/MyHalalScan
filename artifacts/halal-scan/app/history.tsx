@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import C from "@/constants/colors";
-import { useScanContext } from "@/context/ScanContext";
+import { applyIngredientOverrides, useScanContext } from "@/context/ScanContext";
 import { SPIFooter } from "@/components/SPIFooter";
 import type { Product } from "@/lib/db";
 import * as Haptics from "expo-haptics";
@@ -136,13 +136,30 @@ function ProductCard({ item, isWL, onWhitelist }: { item: Product; isWL: boolean
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
-  const { products, pendingBarcodes, clearHistory, isWhitelisted, whitelistProduct } = useScanContext();
+  const {
+    products, pendingBarcodes, clearHistory, isWhitelisted, whitelistProduct,
+    customIngredients, alwaysHalalIngredients,
+  } = useScanContext();
   const [filter, setFilter] = useState<Filter>("all");
 
-  const allItems = useMemo(
-    () => Object.values(products).sort((a, b) => b.timestamp - a.timestamp),
-    [products]
-  );
+  // Recompute each product's result/reason from its RAW server result against the user's
+  // CURRENT ingredient lists on every render — history must never show a result/reason
+  // frozen from before the user added or removed a custom / always-halal ingredient.
+  const allItems = useMemo(() => {
+    return Object.values(products)
+      .map((p): Product => {
+        const { result, reason } = applyIngredientOverrides(
+          p.rawResult ?? p.result,
+          p.rawReason ?? p.reason,
+          p.ingredientsText,
+          p.ingredientsList,
+          customIngredients,
+          alwaysHalalIngredients,
+        );
+        return result === p.result && reason === p.reason ? p : { ...p, result, reason };
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [products, customIngredients, alwaysHalalIngredients]);
 
   const filtered = useMemo(
     () => filter === "all" ? allItems : allItems.filter(i => (isWhitelisted(i.barcode) ? "halal" : i.result) === filter),
