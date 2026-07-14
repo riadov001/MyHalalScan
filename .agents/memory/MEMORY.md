@@ -4,3 +4,4 @@
 - [HalalScan Analysis Reliability Fixes](halalscan-analysis-fixes.md) — critical bugs fixed: E-code space normalisation, alcool/vin standalone, parallel OFF queries, alphanumeric barcode validation
 - [HalalScan Ingredient Classification](halalscan-classification.md) — E471/E472a-f/E473-E479b/E422/E570/E470a-b/E1518/collagène now HARAM (not warning); user-configurable list planned for Task #5
 - [HalalScan Photo Storage](halalscan-photo-storage.md) — GCS upload via presigned URL; photoPath stored in SQLite; thumbnails in history screen
+- [HalalScan halal_products seed strategy](halalscan-halal-products-seed.md) — seed script pulls HALAL/HARAM from OFF across many mirrors; run in batches, background `&` doesn't survive here
