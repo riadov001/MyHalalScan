@@ -308,17 +308,45 @@ export default function HomeScreen() {
           reason: `Le serveur a retourné une erreur (${errMsg}). Réessayez dans quelques instants.`,
         });
       } else {
-        // Timeout ou panne réseau → file d'attente offline
-        await queueOfflineScan(barcode);
-        setScanResult({
-          result: "unknown",
-          productName: isAbort ? "Délai dépassé" : "Connexion impossible",
-          barcode,
-          reason: isAbort
-            ? "La requête a expiré. Analysé automatiquement dès le retour de la connexion."
-            : "Impossible de joindre le serveur. Analysé automatiquement dès le retour de la connexion.",
-          isOfflineQueued: true,
-        });
+        // Timeout ou panne réseau → essaie la base locale avant de mettre en file d'attente
+        const seedFallback = getSeedRef.current(barcode);
+        if (seedFallback) {
+          // Produit trouvé dans la base locale — affiche le résultat hors ligne
+          let seedResult = seedFallback.result as ScanResult;
+          let seedReason: string | undefined;
+          if (!isWhitelisted(barcode)) {
+            const seedText = seedFallback.ingredientsText ?? "";
+            if (seedResult !== "halal" && checkAlwaysHalalOverride(seedReason, seedText, alwaysHalalRef.current)) {
+              seedResult = "halal";
+              seedReason = "Ingrédient dans votre liste « toujours halal »";
+            }
+            if (seedResult !== "haram" && seedText) {
+              const hit = checkCustomIngredients(seedText, customIngredientsRef.current, alwaysHalalRef.current);
+              if (hit) { seedResult = "haram"; seedReason = `Ingrédient personnalisé détecté : "${hit}"`; }
+            }
+          }
+          setScanResult({
+            result: isWhitelisted(barcode) ? "halal" : seedResult,
+            productName: seedFallback.productName,
+            barcode,
+            reason: seedReason,
+            ingredientsText: seedFallback.ingredientsText,
+            isOfflineLocal: true,
+            source: "internal_db",
+          });
+        } else {
+          // Produit inconnu hors ligne → file d'attente
+          await queueOfflineScan(barcode);
+          setScanResult({
+            result: "unknown",
+            productName: isAbort ? "Délai dépassé" : "Connexion impossible",
+            barcode,
+            reason: isAbort
+              ? "La requête a expiré. Analysé automatiquement dès le retour de la connexion."
+              : "Impossible de joindre le serveur. Analysé automatiquement dès le retour de la connexion.",
+            isOfflineQueued: true,
+          });
+        }
       }
     } finally { loadingRef.current = false; setLoading(false); }
   }, [getProduct, isWhitelisted, addProduct, queueOfflineScan, isOnline, pendingBarcodes]);

@@ -474,11 +474,18 @@ function updateManifests(manifests, timestamp, baseUrl, assetsByHash) {
     manifest.createdAt = new Date(
       Number(timestamp.split("-")[0]),
     ).toISOString();
-    manifest.extra.expoClient.hostUri =
-      baseUrl.replace("https://", "") + "/" + platform;
-    manifest.extra.expoGo.debuggerHost =
-      baseUrl.replace("https://", "") + "/" + platform;
-    manifest.extra.expoGo.packagerOpts.dev = false;
+
+    // Guard against missing extra.* fields — manifest shape varies by Expo SDK version
+    const hostUri = baseUrl.replace("https://", "") + "/" + platform;
+    if (manifest.extra.expoClient) {
+      manifest.extra.expoClient.hostUri = hostUri;
+    }
+    if (manifest.extra.expoGo) {
+      manifest.extra.expoGo.debuggerHost = hostUri;
+      if (manifest.extra.expoGo.packagerOpts) {
+        manifest.extra.expoGo.packagerOpts.dev = false;
+      }
+    }
 
     if (manifest.assets && manifest.assets.length > 0) {
       manifest.assets.forEach((asset) => {

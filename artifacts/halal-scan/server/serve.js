@@ -104,6 +104,20 @@ function serveStaticFile(urlPath, res) {
   res.end(content);
 }
 
+// ── Startup checks ─────────────────────────────────────────────────────────
+// If the static build is missing, warn loudly so it's obvious in logs.
+// (The production workflow must run `pnpm run build` before `pnpm run serve`.)
+const androidManifest = path.join(STATIC_ROOT, "android", "manifest.json");
+const iosManifest     = path.join(STATIC_ROOT, "ios",     "manifest.json");
+if (!fs.existsSync(androidManifest) && !fs.existsSync(iosManifest)) {
+  console.error(
+    "[serve] ⚠️  static-build/ is empty or missing — run `pnpm run build` first.\n" +
+    `         Expected: ${STATIC_ROOT}/android/manifest.json`,
+  );
+} else {
+  console.log("[serve] ✅ static-build found — manifests ready.");
+}
+
 const landingPageTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
 const appName = getAppName();
 
