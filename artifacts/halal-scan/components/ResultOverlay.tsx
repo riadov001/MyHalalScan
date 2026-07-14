@@ -32,6 +32,7 @@ interface Props {
   result: ScanResult; productName: string; barcode: string;
   reason?: string; ingredientsText?: string; ingredientsList?: string[];
   isOfflineQueued?: boolean;
+  isOfflineLocal?: boolean; // analysed from local seed DB while offline
   source?: "internal_db" | "openfoodfacts" | "unknown" | "ai";
   onDismiss: () => void; onWhitelist: () => void; isWhitelisted: boolean;
 }
@@ -72,13 +73,14 @@ const THEMES: Record<string, Theme> = {
 
 const SOURCE_LABELS: Record<string, string> = {
   internal_db: "📁  Base interne",
+  internal_db_offline: "📦  Base locale · hors connexion",
   openfoodfacts: "🌐  OpenFoodFacts",
   unknown: "❓  Inconnu",
 };
 
 export default function ResultOverlay({
   result, productName, barcode, reason, ingredientsText, ingredientsList,
-  isOfflineQueued, source, onDismiss, onWhitelist, isWhitelisted,
+  isOfflineQueued, isOfflineLocal, source, onDismiss, onWhitelist, isWhitelisted,
 }: Props) {
   const insets = useSafeAreaInsets();
   const key = isOfflineQueued ? "unknown" : result;
@@ -192,7 +194,11 @@ export default function ResultOverlay({
               </View>
               {!!source && (
                 <View style={[styles.sourcePill, { borderColor: t.accentBorder, backgroundColor: t.accentBg }]}>
-                  <Text style={[styles.sourceTxt, { color: t.accent }]}>{SOURCE_LABELS[source] ?? source}</Text>
+                  <Text style={[styles.sourceTxt, { color: t.accent }]}>
+                    {isOfflineLocal && source === "internal_db"
+                      ? SOURCE_LABELS.internal_db_offline
+                      : (SOURCE_LABELS[source] ?? source)}
+                  </Text>
                 </View>
               )}
             </View>

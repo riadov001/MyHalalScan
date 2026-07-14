@@ -1,30 +1,23 @@
 ---
 name: HalalScan Analysis Reliability Fixes
-description: Critical bugs fixed in halal analysis engine (July 2026)
+description: Critical bugs fixed in scan/gallery flow and custom ingredient application
 ---
 
-## E-number space normalisation (critical bug)
-The `normalise()` function converts `E 471` → `e 471` (space preserved) but HARAM/WARNING lists use `e471` (no space). Added a regex step after normalisation:
-```ts
-s = s.replace(/\be\s+(\d+[a-z]?)\b/g, "e$1");
-```
-**Why:** Without this, all E-codes with a space between letter and number were silently skipped.
+## Web scan fix
+`Camera.scanFromURLAsync` is **native-only** — it does NOT work on web. On web, use the `BarcodeDetector` API on an `<img>` element loaded from the URI. Fallback message if BarcodeDetector is unavailable (Firefox/Safari). This affects `tryScanFromImage` in `app/index.tsx`.
 
-## Missing standalone alcohol terms
-Added `"alcool"` and `"vin"` as standalone entries in HARAM_INGREDIENTS. Previously only compounds like `"alcool ethylique"` and `"vin blanc"` were caught.
-**Why:** Many French product labels list just `"alcool"` or `"vin"` without a qualifier.
-**How to apply:** Masking runs before these checks so `"vinaigre"` is already replaced with `__SAFE__` — no false positives.
+**Why:** Expo camera's scan API requires native MLKit/Vision — it has no web implementation. Silent failure looked like "loads then nothing."
 
-## Alphanumeric barcode validation
-Changed `!/^[\d]+$/.test(barcode)` → `/^[a-zA-Z0-9-]{1,50}$/.test(barcode)`.
-**Why:** Code128/Code39 barcodes can be alphanumeric; old code returned 400 for them.
+## Custom ingredients on cached products
+Custom ingredient checks (haram/always-halal overrides) must be **re-applied on cached results** too — not just after fresh API calls. The user may have changed their ingredient lists since the product was first scanned.
 
-## Parallel OpenFoodFacts queries
-Now queries `world.openfoodfacts.org` AND `fr.openfoodfacts.org` simultaneously (Step 1), then ALL country mirrors in parallel (Step 2) when ingredients are missing. Previously sequential — slow and missed many products.
-**Why:** Parallel queries reduce latency from ~30s (worst case sequential) to ~8s, and `fr` mirror often has better ingredient data for French products.
+**How to apply:** In `processBarcode`, after `getProduct(barcode)` returns a cached hit, run `checkAlwaysHalalOverride` and `checkCustomIngredients` on the cached ingredients before calling `setScanResult`.
 
-## UPCitemdb fallback
-Added `fetchProductNameFromUPCItemDB()` as a last-resort fallback (numeric codes only, free trial endpoint). Returns at least a product name when OFF has no record.
+## Android gallery URI
+`asset.uri` from expo-image-picker on Android is `content://...`. Never prepend `file://` blindly. Only prepend `file://` if no scheme (`://`) is present. Previous code `startsWith("file://")` check was wrong.
 
-## db.ts: AsyncStorage → expo-sqlite
-Rewrote `lib/db.ts` to use `expo-sqlite` 16.x (`openDatabaseAsync`, WAL mode) on native, with in-memory fallback for web. AsyncStorage had a 6 MB limit and no WAL performance.
+## processBarcode await in tryScanFromImage
+`await processBarcode(...)` in `tryScanFromImage` was missing — caused loading/cooldown state to reset before the API call completed (race condition).
+
+## E-code + ingredient normalisation
+E-code space normalisation, alcool/vin standalone detection, parallel OFF queries, alphanumeric barcode validation — all fixed in API server `routes/halal.ts`.

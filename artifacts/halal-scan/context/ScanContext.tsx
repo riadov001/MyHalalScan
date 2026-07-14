@@ -4,19 +4,28 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { AppState } from "react-native";
 
-import { localDb, type AlwaysHalalIngredient, type CustomIngredient, type Product, type ScanResult } from "@/lib/db";
+import { localDb, type AlwaysHalalIngredient, type CustomIngredient, type Product, type ScanResult, type SeedProduct } from "@/lib/db";
 
-export type { ScanResult };
+export type { ScanResult, SeedProduct };
 export type CachedProduct = Product;
 export type { CustomIngredient, AlwaysHalalIngredient };
 
 const API_BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 const MAX_RETRIES = 3;
+// bump this string whenever the bundled seed JSON changes
+const SEED_VERSION = "v1-2026-07";
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const SEED_RAW = require("../assets/seed/halal_products.json") as {
+  v: number;
+  p: Array<{ b: string; n: string; i?: string; o?: string }>;
+};
 
 interface ScanContextType {
   products: Record<string, Product>;
@@ -26,6 +35,8 @@ interface ScanContextType {
   soundEnabled: boolean;
   customIngredients: CustomIngredient[];
   alwaysHalalIngredients: AlwaysHalalIngredient[];
+  seedProducts: SeedProduct[];
+  getSeedByBarcode: (barcode: string) => SeedProduct | undefined;
   addProduct: (p: Product) => Promise<void>;
   queueOfflineScan: (barcode: string) => Promise<void>;
   whitelistProduct: (barcode: string) => Promise<void>;
@@ -38,6 +49,9 @@ interface ScanContextType {
   removeCustomIngredient: (id: number) => Promise<void>;
   addAlwaysHalal: (term: string) => Promise<void>;
   removeAlwaysHalal: (id: number) => Promise<void>;
+  addSeedProduct: (barcode: string, productName: string, result: ScanResult, ingredientsText?: string, origin?: string) => Promise<void>;
+  updateSeedProduct: (p: SeedProduct) => Promise<void>;
+  removeSeedProduct: (barcode: string) => Promise<void>;
 }
 
 const ScanContext = createContext<ScanContextType | null>(null);
@@ -105,8 +119,22 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [soundEnabled, setSoundEnabledState] = useState(true);
   const [customIngredients, setCustomIngredients] = useState<CustomIngredient[]>([]);
   const [alwaysHalalIngredients, setAlwaysHalalIngredients] = useState<AlwaysHalalIngredient[]>([]);
+  const [seedProducts, setSeedProducts] = useState<SeedProduct[]>([]);
   const processingRef = useRef(false);
 
+  // Fast O(1) lookup for seed products by barcode
+  const seedMap = useMemo<Record<string, SeedProduct>>(() => {
+    const m: Record<string, SeedProduct> = {};
+    for (const s of seedProducts) m[s.barcode] = s;
+    return m;
+  }, [seedProducts]);
+
+  const getSeedByBarcode = useCallback(
+    (barcode: string): SeedProduct | undefined => seedMap[barcode],
+    [seedMap],
+  );
+
+  // ── Database init + seed loading ─────────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
@@ -124,6 +152,15 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         setSoundEnabledState(soundVal === null ? true : soundVal === "1");
         setCustomIngredients(customs);
         setAlwaysHalalIngredients(alwaysHalals);
+
+        // Load seed data (once per seed version)
+        const seeded = await localDb.getSeedMeta("seed_version");
+        if (seeded !== SEED_VERSION) {
+          await localDb.bulkInsertSeed(SEED_RAW.p, Date.now());
+          await localDb.setSeedMeta("seed_version", SEED_VERSION);
+        }
+        const seeds = await localDb.getAllSeedProducts();
+        setSeedProducts(seeds);
       } catch {
       } finally {
         setIsDbReady(true);
@@ -131,6 +168,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  // ── Network check ─────────────────────────────────────────────────────────
   const checkNetwork = useCallback(async (): Promise<boolean> => {
     try {
       const state = await Network.getNetworkStateAsync();
@@ -155,6 +193,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     };
   }, [checkNetwork]);
 
+  // ── Pending queue processing ───────────────────────────────────────────────
   const processPendingQueue = useCallback(async () => {
     if (processingRef.current) return;
     const online = await checkNetwork();
@@ -225,6 +264,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isOnline, pendingBarcodes.length, processPendingQueue]);
 
+  // ── Product CRUD ──────────────────────────────────────────────────────────
   const addProduct = useCallback(async (p: Product) => {
     await localDb.upsertProduct(p);
     setProducts((prev) => ({ ...prev, [p.barcode]: p }));
@@ -264,6 +304,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     await localDb.setSetting("sound_enabled", v ? "1" : "0");
   }, []);
 
+  // ── Custom ingredients ────────────────────────────────────────────────────
   const addCustomIngredient = useCallback(async (term: string) => {
     const trimmed = term.trim().slice(0, 60);
     if (!trimmed) return;
@@ -294,6 +335,40 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
     setAlwaysHalalIngredients((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
+  // ── Seed product CRUD ─────────────────────────────────────────────────────
+  const addSeedProduct = useCallback(async (
+    barcode: string,
+    productName: string,
+    result: ScanResult,
+    ingredientsText?: string,
+    origin?: string,
+  ) => {
+    const p: SeedProduct = {
+      barcode: barcode.trim(),
+      productName: productName.trim().slice(0, 150),
+      result,
+      ingredientsText: ingredientsText?.trim().slice(0, 1000),
+      origin: origin?.trim().slice(0, 120),
+      addedAt: Date.now(),
+      isUserAdded: true,
+    };
+    await localDb.upsertSeedProduct(p);
+    setSeedProducts((prev) => {
+      const filtered = prev.filter((s) => s.barcode !== p.barcode);
+      return [p, ...filtered];
+    });
+  }, []);
+
+  const updateSeedProduct = useCallback(async (p: SeedProduct) => {
+    await localDb.upsertSeedProduct(p);
+    setSeedProducts((prev) => prev.map((s) => (s.barcode === p.barcode ? p : s)));
+  }, []);
+
+  const removeSeedProduct = useCallback(async (barcode: string) => {
+    await localDb.deleteSeedProduct(barcode);
+    setSeedProducts((prev) => prev.filter((s) => s.barcode !== barcode));
+  }, []);
+
   return (
     <ScanContext.Provider
       value={{
@@ -304,6 +379,8 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         soundEnabled,
         customIngredients,
         alwaysHalalIngredients,
+        seedProducts,
+        getSeedByBarcode,
         addProduct,
         queueOfflineScan,
         whitelistProduct,
@@ -316,6 +393,9 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         removeCustomIngredient,
         addAlwaysHalal,
         removeAlwaysHalal,
+        addSeedProduct,
+        updateSeedProduct,
+        removeSeedProduct,
       }}
     >
       {children}

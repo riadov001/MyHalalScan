@@ -52,6 +52,7 @@ interface ScanState {
   result: ScanResult; productName: string; barcode: string;
   reason?: string; ingredientsText?: string; ingredientsList?: string[];
   isOfflineQueued?: boolean;
+  isOfflineLocal?: boolean; // analysed from local seed DB while offline
   source?: "internal_db" | "openfoodfacts" | "unknown" | "ai";
 }
 
@@ -78,7 +79,7 @@ export default function HomeScreen() {
     addProduct, queueOfflineScan, whitelistProduct,
     getProduct, isWhitelisted, isOnline, pendingBarcodes,
     processPendingQueue, products, soundEnabled, setSoundEnabled,
-    customIngredients, alwaysHalalIngredients,
+    customIngredients, alwaysHalalIngredients, getSeedByBarcode,
   } = useScanContext();
 
   const histCount = Object.keys(products).length;
@@ -153,6 +154,10 @@ export default function HomeScreen() {
   const soundEnabledRef = useRef(soundEnabled);
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
 
+  // Keep a stable ref to getSeedByBarcode so processBarcode doesn't need it in deps
+  const getSeedRef = useRef(getSeedByBarcode);
+  useEffect(() => { getSeedRef.current = getSeedByBarcode; }, [getSeedByBarcode]);
+
   const processBarcode = useCallback(async (barcode: string) => {
     if (cooldown.current || loadingRef.current || lastBarcode.current === barcode) return;
     cooldown.current = true;
@@ -168,17 +173,60 @@ export default function HomeScreen() {
 
     const cached = getProduct(barcode);
     if (cached && !pendingBarcodes.includes(barcode)) {
+      // Re-apply custom ingredient overrides on cached results (user may have changed their lists)
+      let cachedResult = cached.result;
+      let cachedReason = cached.reason;
+      if (!isWhitelisted(barcode)) {
+        const fullText = [cached.ingredientsText ?? "", ...(cached.ingredientsList ?? [])].filter(Boolean).join(", ");
+        if (cachedResult !== "halal" && checkAlwaysHalalOverride(cachedReason, fullText, alwaysHalalRef.current)) {
+          cachedResult = "halal";
+          cachedReason = "Ingrédient dans votre liste « toujours halal »";
+        }
+        if (cachedResult !== "haram" && fullText) {
+          const hit = checkCustomIngredients(fullText, customIngredientsRef.current, alwaysHalalRef.current);
+          if (hit) { cachedResult = "haram"; cachedReason = `Ingrédient personnalisé détecté : "${hit}"`; }
+        }
+      }
       loadingRef.current = false; setLoading(false);
       setScanResult({
-        result: isWhitelisted(barcode) ? "halal" : cached.result,
+        result: isWhitelisted(barcode) ? "halal" : cachedResult,
         productName: cached.productName, barcode,
-        reason: cached.reason, ingredientsText: cached.ingredientsText,
+        reason: isWhitelisted(barcode) ? undefined : cachedReason,
+        ingredientsText: cached.ingredientsText,
         ingredientsList: cached.ingredientsList,
         source: cached.source,
       });
       return;
     }
     if (!isOnline) {
+      // Check local halal seed DB before queuing offline
+      const seedMatch = getSeedRef.current(barcode);
+      if (seedMatch) {
+        let seedResult: ScanResult = seedMatch.result;
+        let seedReason: string | undefined;
+        if (!isWhitelisted(barcode)) {
+          const seedText = seedMatch.ingredientsText ?? "";
+          if (seedResult !== "halal" && checkAlwaysHalalOverride(seedReason, seedText, alwaysHalalRef.current)) {
+            seedResult = "halal";
+            seedReason = "Ingrédient dans votre liste « toujours halal »";
+          }
+          if (seedResult !== "haram" && seedText) {
+            const hit = checkCustomIngredients(seedText, customIngredientsRef.current, alwaysHalalRef.current);
+            if (hit) { seedResult = "haram"; seedReason = `Ingrédient personnalisé détecté : "${hit}"`; }
+          }
+        }
+        loadingRef.current = false; setLoading(false);
+        setScanResult({
+          result: isWhitelisted(barcode) ? "halal" : seedResult,
+          productName: seedMatch.productName,
+          barcode,
+          reason: seedReason,
+          ingredientsText: seedMatch.ingredientsText,
+          isOfflineLocal: true,
+          source: "internal_db",
+        });
+        return;
+      }
       await queueOfflineScan(barcode);
       loadingRef.current = false; setLoading(false);
       setScanResult({ result: "unknown", productName: "En attente de réseau", barcode,
@@ -290,28 +338,60 @@ export default function HomeScreen() {
 
   // ── Scan barcode from a static image URI (gallery / web capture) ─────────
   const tryScanFromImage = useCallback(async (uri: string): Promise<void> => {
-    try {
-      const codes = await Camera.scanFromURLAsync(uri, [
-        "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
-      ]);
-      if (codes[0]?.data) {
-        loadingRef.current = false;
-        setLoading(false);
-        cooldown.current = false;
-        lastBarcode.current = null;
-        await processBarcode(codes[0].data);
-        return;
+    let foundCode: string | null = null;
+
+    if (Platform.OS !== "web") {
+      // Native (iOS + Android): use Camera.scanFromURLAsync
+      try {
+        const codes = await Camera.scanFromURLAsync(uri, [
+          "ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr",
+        ]);
+        foundCode = codes[0]?.data ?? null;
+      } catch (err) {
+        console.warn("[HalalScan] Camera.scanFromURLAsync error:", err instanceof Error ? err.message : String(err));
       }
-    } catch (err) {
-      console.warn("[HalalScan] Camera.scanFromURLAsync error:", err instanceof Error ? err.message : String(err));
-      /* scan API failed — fall through to "no barcode" message */
+    } else {
+      // Web: Camera.scanFromURLAsync is native-only. Use BarcodeDetector API instead.
+      if ("BarcodeDetector" in window) {
+        try {
+          const img = document.createElement("img");
+          img.src = uri;
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error("image load failed"));
+            setTimeout(() => reject(new Error("timeout")), 8000);
+          });
+          // @ts-ignore — BarcodeDetector not in TS DOM lib yet
+          const detector = new window.BarcodeDetector({
+            formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"],
+          });
+          const codes: Array<{ rawValue: string }> = await detector.detect(img);
+          foundCode = codes[0]?.rawValue ?? null;
+        } catch (err) {
+          console.warn("[HalalScan] Web BarcodeDetector error:", err instanceof Error ? err.message : String(err));
+        }
+      } else {
+        console.warn("[HalalScan] BarcodeDetector API not available in this browser");
+      }
     }
-    // No barcode found in image
+
+    if (foundCode) {
+      loadingRef.current = false;
+      setLoading(false);
+      cooldown.current = false;
+      lastBarcode.current = null;
+      await processBarcode(foundCode);
+      return;
+    }
+
+    // No barcode found
     loadingRef.current = false;
     setLoading(false);
     Alert.alert(
       "Aucun code-barres détecté",
-      "Impossible de lire un code-barres dans cette image.\n\nConseils :\n• Assurez-vous que le code-barres est net et bien éclairé\n• Évitez les reflets et le flou\n• Essayez de scanner directement avec la caméra",
+      Platform.OS === "web" && !("BarcodeDetector" in window)
+        ? "Votre navigateur ne supporte pas la détection de code-barres.\nUtilisez Chrome ou Edge, ou scannez directement avec votre caméra."
+        : "Impossible de lire un code-barres dans cette image.\n\nConseils :\n• Assurez-vous que le code-barres est net et bien éclairé\n• Évitez les reflets et le flou\n• Essayez de scanner directement avec la caméra",
     );
   }, [processBarcode]);
 
@@ -757,6 +837,7 @@ export default function HomeScreen() {
           ingredientsText={scanResult.ingredientsText}
           ingredientsList={scanResult.ingredientsList}
           isOfflineQueued={scanResult.isOfflineQueued}
+          isOfflineLocal={scanResult.isOfflineLocal}
           onDismiss={dismiss}
           onWhitelist={onWhitelist}
           source={scanResult.source}
@@ -787,6 +868,13 @@ export default function HomeScreen() {
                   <Text style={styles.menuBadgeTxt}>{histCount > 99 ? "99+" : histCount}</Text>
                 </View>
               )}
+            </Pressable>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); router.push("/database"); }}
+            >
+              <Text style={styles.menuEmoji}>🗄️</Text>
+              <Text style={styles.menuTxt}>Base de données halal</Text>
             </Pressable>
             <View style={styles.menuDivider} />
             <View style={styles.menuSoundRow}>

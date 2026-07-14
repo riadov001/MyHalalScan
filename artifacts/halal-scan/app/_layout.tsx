@@ -49,6 +49,7 @@ export default function RootLayout() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="history" />
                 <Stack.Screen name="settings" />
+                <Stack.Screen name="database" />
               </Stack>
               {showSplash && <AppSplash onDone={() => setShowSplash(false)} />}
             </ScanProvider>

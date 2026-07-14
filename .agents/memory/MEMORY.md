@@ -1,6 +1,7 @@
 - [HalalScan SQLite + Offline Architecture](halalscan-architecture.md) — SQLite via expo-sqlite 16.x replaces AsyncStorage; offline queue auto-syncs on reconnect
 - [HalalScan Package Versions](halalscan-packages.md) — expo-sqlite must be ~16.0.10 and expo-network must be ~8.0.8 for Expo 54
 - [HalalScan Barcode Scanner API](halalscan-scanner.md) — expo-camera 17 types do NOT expose onModernBarcodeScanned; use onBarcodeScanned only
-- [HalalScan Analysis Reliability Fixes](halalscan-analysis-fixes.md) — critical bugs fixed: E-code space normalisation, alcool/vin standalone, parallel OFF queries, alphanumeric barcode validation
+- [HalalScan Analysis Reliability Fixes](halalscan-analysis-fixes.md) — Camera.scanFromURLAsync native-only (web needs BarcodeDetector); custom ingredients must re-apply on cached results; Android content:// URI fix
+- [HalalScan Offline Seed Database](halalscan-seed-db.md) — 336-product halal seed in seed_products table; loaded via require() at bundle time; offline lookup before queue; database.tsx management screen
 - [HalalScan Ingredient Classification](halalscan-classification.md) — E471/E472a-f/E473-E479b/E422/E570/E470a-b/E1518/collagène now HARAM (not warning); user-configurable list planned for Task #5
 - [HalalScan Photo Storage](halalscan-photo-storage.md) — GCS upload via presigned URL; photoPath stored in SQLite; thumbnails in history screen
