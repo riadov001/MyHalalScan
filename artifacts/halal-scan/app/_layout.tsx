@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -29,14 +29,25 @@ export default function RootLayout() {
     Inter_900Black,
   });
   const [showSplash, setShowSplash] = useState(true);
+  // Fallback: if fonts never resolve (happens in some OTA/Expo Go builds),
+  // unblock rendering after 4 s so the app doesn't show a permanent blank screen.
+  const [fontTimeout, setFontTimeout] = useState(false);
+  const fontTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fontTimeoutRef.current = setTimeout(() => setFontTimeout(true), 4000);
+    return () => { if (fontTimeoutRef.current) clearTimeout(fontTimeoutRef.current); };
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
+      if (fontTimeoutRef.current) clearTimeout(fontTimeoutRef.current);
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
 
-  if (!fontsLoaded && !fontError) return null;
+  // Block render only while fonts are still loading AND the 4-second guard hasn't fired.
+  if (!fontsLoaded && !fontError && !fontTimeout) return null;
 
   return (
     <SafeAreaProvider>

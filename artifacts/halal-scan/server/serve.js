@@ -45,11 +45,17 @@ function getAppName() {
   }
 }
 
+const CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, HEAD, OPTIONS",
+  "access-control-allow-headers": "expo-platform, expo-protocol-version, expo-sfv-version, accept, content-type",
+};
+
 function serveManifest(platform, res) {
   const manifestPath = path.join(STATIC_ROOT, platform, "manifest.json");
 
   if (!fs.existsSync(manifestPath)) {
-    res.writeHead(404, { "content-type": "application/json" });
+    res.writeHead(404, { "content-type": "application/json", ...CORS_HEADERS });
     res.end(
       JSON.stringify({ error: `Manifest not found for platform: ${platform}` }),
     );
@@ -61,6 +67,8 @@ function serveManifest(platform, res) {
     "content-type": "application/json",
     "expo-protocol-version": "1",
     "expo-sfv-version": "0",
+    "cache-control": "no-store",
+    ...CORS_HEADERS,
   });
   res.end(manifest);
 }
@@ -77,7 +85,7 @@ function serveLandingPage(req, res, landingPageTemplate, appName) {
     .replace(/EXPS_URL_PLACEHOLDER/g, expsUrl)
     .replace(/APP_NAME_PLACEHOLDER/g, appName);
 
-  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8", ...CORS_HEADERS });
   res.end(html);
 }
 
@@ -99,9 +107,14 @@ function serveStaticFile(urlPath, res) {
 
   const ext = path.extname(filePath).toLowerCase();
   const contentType = MIME_TYPES[ext] || "application/octet-stream";
-  const content = fs.readFileSync(filePath);
-  res.writeHead(200, { "content-type": contentType });
-  res.end(content);
+  const stat = fs.statSync(filePath);
+  res.writeHead(200, {
+    "content-type": contentType,
+    "content-length": stat.size,
+    "cache-control": "public, max-age=31536000, immutable",
+    ...CORS_HEADERS,
+  });
+  fs.createReadStream(filePath).pipe(res);
 }
 
 // ── Startup checks ─────────────────────────────────────────────────────────
@@ -122,6 +135,13 @@ const landingPageTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
 const appName = getAppName();
 
 const server = http.createServer((req, res) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return;
+  }
+
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
   let pathname = url.pathname;
 

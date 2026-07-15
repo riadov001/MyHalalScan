@@ -9,7 +9,8 @@
       "distribution": "internal",
       "autoIncrement": true,
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "resourceClass": "medium"
       },
       "node": "20.18.3",
       "pnpm": "10.26.1"
@@ -17,8 +18,10 @@
     "preview": {
       "distribution": "internal",
       "autoIncrement": true,
+      "channel": "preview",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "resourceClass": "medium"
       },
       "node": "20.18.3",
       "pnpm": "10.26.1",
@@ -28,8 +31,10 @@
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "resourceClass": "medium"
       },
       "ios": {
         "resourceClass": "m1-medium"

@@ -171,151 +171,44 @@ export default function HomeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     }
 
-    const cached = getProduct(barcode);
-    if (cached && !pendingBarcodes.includes(barcode)) {
-      // Re-apply custom ingredient overrides on cached results (user may have changed their lists)
-      let cachedResult = cached.result;
-      let cachedReason = cached.reason;
-      if (!isWhitelisted(barcode)) {
-        const fullText = [cached.ingredientsText ?? "", ...(cached.ingredientsList ?? [])].filter(Boolean).join(", ");
-        if (cachedResult !== "halal" && checkAlwaysHalalOverride(cachedReason, fullText, alwaysHalalRef.current)) {
-          cachedResult = "halal";
-          cachedReason = "Ingrédient dans votre liste « toujours halal »";
-        }
-        if (cachedResult !== "haram" && fullText) {
-          const hit = checkCustomIngredients(fullText, customIngredientsRef.current, alwaysHalalRef.current);
-          if (hit) { cachedResult = "haram"; cachedReason = `Ingrédient personnalisé détecté : "${hit}"`; }
-        }
-      }
-      loadingRef.current = false; setLoading(false);
-      setScanResult({
-        result: isWhitelisted(barcode) ? "halal" : cachedResult,
-        productName: cached.productName, barcode,
-        reason: isWhitelisted(barcode) ? undefined : cachedReason,
-        ingredientsText: cached.ingredientsText,
-        ingredientsList: cached.ingredientsList,
-        source: cached.source,
-      });
-      return;
-    }
-    if (!isOnline) {
-      // Check local halal seed DB before queuing offline
-      const seedMatch = getSeedRef.current(barcode);
-      if (seedMatch) {
-        let seedResult: ScanResult = seedMatch.result;
-        let seedReason: string | undefined;
+    // Outer try/finally guarantees loadingRef + setLoading are ALWAYS reset,
+    // even if a DB call (addProduct, queueOfflineScan, …) throws unexpectedly.
+    try {
+      const cached = getProduct(barcode);
+      if (cached && !pendingBarcodes.includes(barcode)) {
+        // Re-apply custom ingredient overrides on cached results (user may have changed their lists)
+        let cachedResult = cached.result;
+        let cachedReason = cached.reason;
         if (!isWhitelisted(barcode)) {
-          const seedText = seedMatch.ingredientsText ?? "";
-          if (seedResult !== "halal" && checkAlwaysHalalOverride(seedReason, seedText, alwaysHalalRef.current)) {
-            seedResult = "halal";
-            seedReason = "Ingrédient dans votre liste « toujours halal »";
+          const fullText = [cached.ingredientsText ?? "", ...(cached.ingredientsList ?? [])].filter(Boolean).join(", ");
+          if (cachedResult !== "halal" && checkAlwaysHalalOverride(cachedReason, fullText, alwaysHalalRef.current)) {
+            cachedResult = "halal";
+            cachedReason = "Ingrédient dans votre liste « toujours halal »";
           }
-          if (seedResult !== "haram" && seedText) {
-            const hit = checkCustomIngredients(seedText, customIngredientsRef.current, alwaysHalalRef.current);
-            if (hit) { seedResult = "haram"; seedReason = `Ingrédient personnalisé détecté : "${hit}"`; }
+          if (cachedResult !== "haram" && fullText) {
+            const hit = checkCustomIngredients(fullText, customIngredientsRef.current, alwaysHalalRef.current);
+            if (hit) { cachedResult = "haram"; cachedReason = `Ingrédient personnalisé détecté : "${hit}"`; }
           }
         }
-        loadingRef.current = false; setLoading(false);
         setScanResult({
-          result: isWhitelisted(barcode) ? "halal" : seedResult,
-          productName: seedMatch.productName,
-          barcode,
-          reason: seedReason,
-          ingredientsText: seedMatch.ingredientsText,
-          isOfflineLocal: true,
-          source: "internal_db",
+          result: isWhitelisted(barcode) ? "halal" : cachedResult,
+          productName: cached.productName, barcode,
+          reason: isWhitelisted(barcode) ? undefined : cachedReason,
+          ingredientsText: cached.ingredientsText,
+          ingredientsList: cached.ingredientsList,
+          source: cached.source,
         });
         return;
       }
-      await queueOfflineScan(barcode);
-      loadingRef.current = false; setLoading(false);
-      setScanResult({ result: "unknown", productName: "En attente de réseau", barcode,
-        reason: "Analysé automatiquement dès le retour de la connexion.", isOfflineQueued: true });
-      return;
-    }
-    try {
-      const requestUrl = `${API_BASE}/api/halal/analyze/${barcode}`;
-      console.log("[HalalScan] Request URL =", requestUrl);
 
-      const ctrl = new AbortController();
-      const tId = setTimeout(() => ctrl.abort(), 15_000);
-      let res: Response;
-      try {
-        res = await fetch(requestUrl, { signal: ctrl.signal });
-      } finally {
-        clearTimeout(tId);
-      }
-      console.log(`[HalalScan] HTTP ${res.status} ← /api/halal/analyze/${barcode}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as {
-        result: ScanResult; productName: string; reason?: string;
-        ingredientsText?: string; ingredientsList?: string[];
-        source?: "internal_db" | "openfoodfacts" | "ai" | "unknown";
-      };
-      console.log(`[HalalScan] Response: result=${json.result} name="${json.productName}" source=${json.source} foundInDb=${(json as Record<string,unknown>).foundInDatabase}`);
-
-      // Build full ingredients text (combine ingredientsText + ingredientsList for best coverage)
-      const fullIngredientsText = [
-        json.ingredientsText ?? "",
-        (json.ingredientsList ?? []).join(", "),
-      ].filter(Boolean).join(", ");
-
-      let finalResult = json.result;
-      let finalReason = json.reason;
-
-      // 1. Always-halal override: if the server flagged an ingredient the user marked as always-halal, revert to halal
-      if (finalResult !== "halal" && checkAlwaysHalalOverride(json.reason, fullIngredientsText, alwaysHalalRef.current)) {
-        finalResult = "halal";
-        finalReason = "Ingrédient dans votre liste « toujours halal »";
-      }
-
-      // 2. Custom-ingredient override: if any personal haram term found → HARAM
-      if (finalResult !== "haram" && fullIngredientsText) {
-        const customHit = checkCustomIngredients(fullIngredientsText, customIngredientsRef.current, alwaysHalalRef.current);
-        if (customHit) {
-          finalResult = "haram";
-          finalReason = `Ingrédient personnalisé détecté : "${customHit}"`;
-        }
-      }
-
-      const product: Product = {
-        barcode, result: finalResult, productName: json.productName, timestamp: Date.now(),
-        reason: finalReason, ingredientsText: json.ingredientsText,
-        ingredientsList: json.ingredientsList, isWhitelisted: false,
-        source: json.source,
-      };
-      await addProduct(product);
-      setScanResult({
-        result: isWhitelisted(barcode) ? "halal" : finalResult,
-        productName: json.productName, barcode, reason: finalReason,
-        ingredientsText: json.ingredientsText, ingredientsList: json.ingredientsList,
-        source: json.source,
-      });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const isAbort  = err instanceof Error && err.name === "AbortError";
-      const isNetwork = err instanceof TypeError; // "Failed to fetch" / réseau inaccessible
-      const isHttpErr = !isAbort && !isNetwork;   // throw new Error(`HTTP ${status}`)
-
-      console.error(`[HalalScan] Erreur fetch barcode=${barcode} type=${isAbort ? "timeout" : isNetwork ? "network" : "http"} msg=${errMsg}`);
-
-      if (isHttpErr) {
-        // Le serveur est joignable mais a renvoyé une erreur (5xx, etc.)
-        setScanResult({
-          result: "unknown",
-          productName: "Erreur serveur",
-          barcode,
-          reason: `Le serveur a retourné une erreur (${errMsg}). Réessayez dans quelques instants.`,
-        });
-      } else {
-        // Timeout ou panne réseau → essaie la base locale avant de mettre en file d'attente
-        const seedFallback = getSeedRef.current(barcode);
-        if (seedFallback) {
-          // Produit trouvé dans la base locale — affiche le résultat hors ligne
-          let seedResult = seedFallback.result as ScanResult;
+      if (!isOnline) {
+        // Check local halal seed DB before queuing offline
+        const seedMatch = getSeedRef.current(barcode);
+        if (seedMatch) {
+          let seedResult: ScanResult = seedMatch.result;
           let seedReason: string | undefined;
           if (!isWhitelisted(barcode)) {
-            const seedText = seedFallback.ingredientsText ?? "";
+            const seedText = seedMatch.ingredientsText ?? "";
             if (seedResult !== "halal" && checkAlwaysHalalOverride(seedReason, seedText, alwaysHalalRef.current)) {
               seedResult = "halal";
               seedReason = "Ingrédient dans votre liste « toujours halal »";
@@ -327,28 +220,153 @@ export default function HomeScreen() {
           }
           setScanResult({
             result: isWhitelisted(barcode) ? "halal" : seedResult,
-            productName: seedFallback.productName,
+            productName: seedMatch.productName,
             barcode,
             reason: seedReason,
-            ingredientsText: seedFallback.ingredientsText,
+            ingredientsText: seedMatch.ingredientsText,
             isOfflineLocal: true,
             source: "internal_db",
           });
-        } else {
-          // Produit inconnu hors ligne → file d'attente
-          await queueOfflineScan(barcode);
+          return;
+        }
+        await queueOfflineScan(barcode);
+        setScanResult({
+          result: "unknown", productName: "En attente de réseau", barcode,
+          reason: "Analysé automatiquement dès le retour de la connexion.", isOfflineQueued: true,
+        });
+        return;
+      }
+
+      try {
+        const requestUrl = `${API_BASE}/api/halal/analyze/${barcode}`;
+        console.log("[HalalScan] Request URL =", requestUrl);
+
+        const ctrl = new AbortController();
+        const tId = setTimeout(() => ctrl.abort(), 15_000);
+        let res: Response;
+        try {
+          res = await fetch(requestUrl, { signal: ctrl.signal });
+        } finally {
+          clearTimeout(tId);
+        }
+        console.log(`[HalalScan] HTTP ${res.status} ← /api/halal/analyze/${barcode}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as {
+          result: ScanResult; productName: string; reason?: string;
+          ingredientsText?: string; ingredientsList?: string[];
+          source?: "internal_db" | "openfoodfacts" | "ai" | "unknown";
+        };
+        console.log(`[HalalScan] Response: result=${json.result} name="${json.productName}" source=${json.source} foundInDb=${(json as Record<string,unknown>).foundInDatabase}`);
+
+        // Build full ingredients text (combine ingredientsText + ingredientsList for best coverage)
+        const fullIngredientsText = [
+          json.ingredientsText ?? "",
+          (json.ingredientsList ?? []).join(", "),
+        ].filter(Boolean).join(", ");
+
+        let finalResult = json.result;
+        let finalReason = json.reason;
+
+        // 1. Always-halal override
+        if (finalResult !== "halal" && checkAlwaysHalalOverride(json.reason, fullIngredientsText, alwaysHalalRef.current)) {
+          finalResult = "halal";
+          finalReason = "Ingrédient dans votre liste « toujours halal »";
+        }
+
+        // 2. Custom-ingredient override
+        if (finalResult !== "haram" && fullIngredientsText) {
+          const customHit = checkCustomIngredients(fullIngredientsText, customIngredientsRef.current, alwaysHalalRef.current);
+          if (customHit) {
+            finalResult = "haram";
+            finalReason = `Ingrédient personnalisé détecté : "${customHit}"`;
+          }
+        }
+
+        const product: Product = {
+          barcode, result: finalResult, productName: json.productName, timestamp: Date.now(),
+          reason: finalReason, ingredientsText: json.ingredientsText,
+          ingredientsList: json.ingredientsList, isWhitelisted: false,
+          source: json.source,
+        };
+        await addProduct(product);
+        setScanResult({
+          result: isWhitelisted(barcode) ? "halal" : finalResult,
+          productName: json.productName, barcode, reason: finalReason,
+          ingredientsText: json.ingredientsText, ingredientsList: json.ingredientsList,
+          source: json.source,
+        });
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const isAbort   = err instanceof Error && err.name === "AbortError";
+        const isNetwork = err instanceof TypeError; // "Failed to fetch" / réseau inaccessible
+        const isHttpErr = !isAbort && !isNetwork;  // throw new Error(`HTTP ${status}`)
+
+        console.error(`[HalalScan] Erreur fetch barcode=${barcode} type=${isAbort ? "timeout" : isNetwork ? "network" : "http"} msg=${errMsg}`);
+
+        if (isHttpErr) {
+          // Le serveur est joignable mais a renvoyé une erreur (5xx, etc.)
           setScanResult({
             result: "unknown",
-            productName: isAbort ? "Délai dépassé" : "Connexion impossible",
+            productName: "Erreur serveur",
             barcode,
-            reason: isAbort
-              ? "La requête a expiré. Analysé automatiquement dès le retour de la connexion."
-              : "Impossible de joindre le serveur. Analysé automatiquement dès le retour de la connexion.",
-            isOfflineQueued: true,
+            reason: `Le serveur a retourné une erreur (${errMsg}). Réessayez dans quelques instants.`,
           });
+        } else {
+          // Timeout ou panne réseau → essaie la base locale avant de mettre en file d'attente
+          const seedFallback = getSeedRef.current(barcode);
+          if (seedFallback) {
+            let seedResult = seedFallback.result as ScanResult;
+            let seedReason: string | undefined;
+            if (!isWhitelisted(barcode)) {
+              const seedText = seedFallback.ingredientsText ?? "";
+              if (seedResult !== "halal" && checkAlwaysHalalOverride(seedReason, seedText, alwaysHalalRef.current)) {
+                seedResult = "halal";
+                seedReason = "Ingrédient dans votre liste « toujours halal »";
+              }
+              if (seedResult !== "haram" && seedText) {
+                const hit = checkCustomIngredients(seedText, customIngredientsRef.current, alwaysHalalRef.current);
+                if (hit) { seedResult = "haram"; seedReason = `Ingrédient personnalisé détecté : "${hit}"`; }
+              }
+            }
+            setScanResult({
+              result: isWhitelisted(barcode) ? "halal" : seedResult,
+              productName: seedFallback.productName,
+              barcode,
+              reason: seedReason,
+              ingredientsText: seedFallback.ingredientsText,
+              isOfflineLocal: true,
+              source: "internal_db",
+            });
+          } else {
+            // Produit inconnu hors ligne → file d'attente
+            await queueOfflineScan(barcode);
+            setScanResult({
+              result: "unknown",
+              productName: isAbort ? "Délai dépassé" : "Connexion impossible",
+              barcode,
+              reason: isAbort
+                ? "La requête a expiré. Analysé automatiquement dès le retour de la connexion."
+                : "Impossible de joindre le serveur. Analysé automatiquement dès le retour de la connexion.",
+              isOfflineQueued: true,
+            });
+          }
         }
       }
-    } finally { loadingRef.current = false; setLoading(false); }
+    } catch (unexpectedErr) {
+      // Safety net: any unhandled throw (DB crash, etc.) shows a generic error
+      // instead of leaving the loading state permanently stuck.
+      console.error("[HalalScan] Erreur inattendue dans processBarcode:", unexpectedErr);
+      setScanResult({
+        result: "unknown",
+        productName: "Erreur inattendue",
+        barcode,
+        reason: "Une erreur imprévue s'est produite. Réessayez.",
+      });
+    } finally {
+      // Always reset loading — guarantees the button reappears no matter what happened above.
+      loadingRef.current = false;
+      setLoading(false);
+    }
   }, [getProduct, isWhitelisted, addProduct, queueOfflineScan, isOnline, pendingBarcodes]);
 
   // ── Stable camera callback — CameraView gets the same function ref every render ──
