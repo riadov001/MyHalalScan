@@ -333,7 +333,6 @@ const styles = StyleSheet.create({
   ingRow: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
   ingDot: { width: 4, height: 4, borderRadius: 2, marginTop: 9, flexShrink: 0 },
   ingTxt: { flex: 1, fontSize: 12, color: C.textMuted, lineHeight: 18 },
-  ingMore: { fontSize: 11, color: C.textMuted, textAlign: "center", marginTop: 4, fontWeight: "600" },
 
   whitelistBtn: {
     borderTopWidth: StyleSheet.hairlineWidth,

@@ -74,6 +74,9 @@ export default function HomeScreen() {
   const loadingRef = useRef(false);
   const scanningRef = useRef(false);
   const autoStartedRef = useRef(false);
+  // Set to true when the user explicitly presses "ARRÊTER LE SCAN".
+  // Prevents dismiss() from auto-restarting the camera against the user's intent.
+  const userStoppedRef = useRef(false);
   const cameraViewRef = useRef<CameraView>(null);
   const {
     addProduct, queueOfflineScan, whitelistProduct,
@@ -108,9 +111,10 @@ export default function HomeScreen() {
     }
   }, [permission?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-start scanning as soon as camera permission is confirmed
+  // Auto-start scanning as soon as camera permission is confirmed.
+  // Skip if the user has explicitly stopped the scanner (userStoppedRef).
   useEffect(() => {
-    if (permission?.granted && !autoStartedRef.current && !scanResult) {
+    if (permission?.granted && !autoStartedRef.current && !scanResult && !userStoppedRef.current) {
       autoStartedRef.current = true;
       scanningRef.current = true;
       setScanning(true);
@@ -580,7 +584,10 @@ export default function HomeScreen() {
     setScanResult(null);
     lastBarcode.current = null;
     cooldown.current = false;
-    autoStartedRef.current = false;
+    // Only allow auto-restart if the user hasn't explicitly stopped scanning.
+    if (!userStoppedRef.current) {
+      autoStartedRef.current = false;
+    }
   }, []);
 
 
@@ -620,7 +627,15 @@ export default function HomeScreen() {
     setScanning(v => {
       const next = !v;
       scanningRef.current = next;
-      if (!next) { lastBarcode.current = null; cooldown.current = false; }
+      if (next) {
+        // User explicitly restarted — clear the stop flag
+        userStoppedRef.current = false;
+      } else {
+        // User explicitly stopped — remember so dismiss() doesn't auto-restart
+        userStoppedRef.current = true;
+        lastBarcode.current = null;
+        cooldown.current = false;
+      }
       return next;
     });
   }, [loading]);

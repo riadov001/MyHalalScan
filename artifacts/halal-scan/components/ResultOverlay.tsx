@@ -90,6 +90,9 @@ export default function ResultOverlay({
   const [showIng, setShowIng] = useState(false);
   const dismissed = useRef(false);
   const cdRef = useRef(DISMISS_SEC);
+  // Stable ref to dismiss so the setInterval closure always calls the latest version
+  // even if the component re-renders between mount and countdown completion.
+  const dismissRef = useRef<() => void>(() => {});
 
   const ingList = ingredientsList?.length
     ? ingredientsList
@@ -125,21 +128,23 @@ export default function ResultOverlay({
     }
   }, []);
 
-  // Countdown
-  useEffect(() => {
-    const id = setInterval(() => {
-      cdRef.current--;
-      setCd(cdRef.current);
-      if (cdRef.current <= 0) { clearInterval(id); dismiss(); }
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
   const dismiss = () => {
     if (dismissed.current) return;
     dismissed.current = true;
     overlay.value = withTiming(0, { duration: 240 }, (done) => { if (done) runOnJS(onDismiss)(); });
   };
+  // Keep ref in sync every render so the interval always calls the current dismiss
+  dismissRef.current = dismiss;
+
+  // Countdown
+  useEffect(() => {
+    const id = setInterval(() => {
+      cdRef.current--;
+      setCd(cdRef.current);
+      if (cdRef.current <= 0) { clearInterval(id); dismissRef.current(); }
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const progress = Math.min(100, ((DISMISS_SEC - cd) / DISMISS_SEC) * 100);
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
@@ -283,7 +288,6 @@ export default function ResultOverlay({
 const styles = StyleSheet.create({
   root: { zIndex: 100 },
   textureOverlay: {
-    backgroundImage: undefined,
     opacity: 0.015,
   },
 

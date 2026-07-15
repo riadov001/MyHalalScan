@@ -42,11 +42,13 @@ export interface AlwaysHalalIngredient {
 }
 
 let _db: SQLite.SQLiteDatabase | null = null;
+// Singleton promise: ensures only ONE openDatabaseAsync call ever runs, even when
+// multiple callers hit getDb() concurrently (e.g. Promise.all on startup).
+let _dbInitPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
-async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (_db) return _db;
-  _db = await SQLite.openDatabaseAsync("halalscan_v2.db");
-  await _db.execAsync(`
+async function initDb(): Promise<SQLite.SQLiteDatabase> {
+  const db = await SQLite.openDatabaseAsync("halalscan_v2.db");
+  await db.execAsync(`
     PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS products (
       barcode TEXT PRIMARY KEY,
@@ -89,9 +91,18 @@ async function getDb(): Promise<SQLite.SQLiteDatabase> {
       value TEXT NOT NULL
     );
   `);
-  try { await _db.execAsync("ALTER TABLE products ADD COLUMN photo_path TEXT"); } catch { /* already exists */ }
-  try { await _db.execAsync("ALTER TABLE products ADD COLUMN source TEXT"); } catch { /* already exists */ }
-  return _db;
+  try { await db.execAsync("ALTER TABLE products ADD COLUMN photo_path TEXT"); } catch { /* already exists */ }
+  try { await db.execAsync("ALTER TABLE products ADD COLUMN source TEXT"); } catch { /* already exists */ }
+  _db = db;
+  return db;
+}
+
+async function getDb(): Promise<SQLite.SQLiteDatabase> {
+  // Fast path: DB already initialised
+  if (_db) return _db;
+  // Slow path: start init once; all concurrent callers await the same promise
+  if (!_dbInitPromise) _dbInitPromise = initDb();
+  return _dbInitPromise;
 }
 
 type ProductRow = {
