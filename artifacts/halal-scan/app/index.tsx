@@ -446,41 +446,30 @@ export default function HomeScreen() {
   }, [processBarcode]);
 
   // ── Web: capture depuis CameraView → scan code-barres ────────────────────
+  //
+  // IMPORTANT: everything up to the point where we either analyze an image or
+  // open the file picker below must stay synchronous (no `await`) relative to
+  // the click. Browsers only treat a `input.click()` call as "triggered by the
+  // user" while the click's transient activation window is still open — once
+  // an `await` has yielded control back to the event loop, that window can
+  // already be gone, and `input.click()` then silently does nothing (no
+  // dialog, no error). That's what made this button appear completely
+  // unresponsive: it used to try an async BarcodeDetector pass on the live
+  // video first, and only reach the file-picker fallback *after* that await —
+  // by then the click no longer counted as user-initiated in some browsers.
   const handleWebCaptureScan = useCallback(async () => {
     if (loadingRef.current) return;
 
-    // ── Priorité 1 : BarcodeDetector API (Chrome 83+, Edge 83+) ──
-    // Detects barcodes directly from the live video stream — no snapshot needed.
     const video = Platform.OS === "web"
       ? (document.querySelector("video") as HTMLVideoElement | null)
       : null;
 
-    if (video && "BarcodeDetector" in window) {
-      try {
-        loadingRef.current = true;
-        setLoading(true);
-        // @ts-ignore — BarcodeDetector is not yet in TS DOM types
-        const detector = new window.BarcodeDetector({
-          formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "qr_code"],
-        });
-        const codes: Array<{ rawValue: string }> = await detector.detect(video);
-        loadingRef.current = false;
-        setLoading(false);
-        if (codes[0]?.rawValue) {
-          cooldown.current = false;
-          lastBarcode.current = null;
-          await processBarcode(codes[0].rawValue);
-          return;
-        }
-        // No barcode detected from live frame — fall through to canvas capture
-      } catch {
-        loadingRef.current = false;
-        setLoading(false);
-      }
-    }
-
-    // ── Priorité 2 : Canvas snapshot → Camera.scanFromURLAsync ──
-    // Works when BarcodeDetector is unavailable (Firefox, Safari).
+    // ── Priorité 1 : snapshot de l'image caméra en direct, puis analyse ──
+    // On capture d'abord une image (synchrone) et on la fait analyser par
+    // tryScanFromImage, qui gère elle-même la détection (BarcodeDetector sur
+    // le web, Camera.scanFromURLAsync sur natif). Cela couvre le même cas que
+    // l'ancienne détection en direct, sans introduire d'attente avant un
+    // éventuel repli sur le sélecteur de fichier.
     if (video && video.readyState >= 2) {
       try {
         loadingRef.current = true;
@@ -499,28 +488,41 @@ export default function HomeScreen() {
         }
         loadingRef.current = false;
         setLoading(false);
-      } catch {
+      } catch (err) {
+        console.warn("[HalalScan] Canvas capture error:", err instanceof Error ? err.message : String(err));
         loadingRef.current = false;
         setLoading(false);
       }
     }
 
-    // ── Priorité 3 : Sélection de fichier (universel) ──
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.capture = "environment"; // Ouvre la caméra sur mobile
-    input.onchange = async (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      loadingRef.current = true;
-      setLoading(true);
-      const url = URL.createObjectURL(file);
-      await tryScanFromImage(url);
-      URL.revokeObjectURL(url);
-    };
-    input.click();
-  }, [tryScanFromImage, processBarcode]);
+    // ── Priorité 2 : pas d'image caméra exploitable → sélecteur de fichier ──
+    // Doit rester synchrone (aucun `await` avant `input.click()`) pour que le
+    // navigateur ouvre bien la boîte de dialogue en réponse au clic.
+    try {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.capture = "environment"; // Ouvre la caméra sur mobile
+      input.onchange = async (e: Event) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        loadingRef.current = true;
+        setLoading(true);
+        const url = URL.createObjectURL(file);
+        try {
+          await tryScanFromImage(url);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      };
+      input.click();
+    } catch (err) {
+      console.warn("[HalalScan] File picker error:", err instanceof Error ? err.message : String(err));
+      loadingRef.current = false;
+      setLoading(false);
+      Alert.alert("Erreur", "Impossible d'ouvrir le sélecteur de photo. Réessayez.");
+    }
+  }, [tryScanFromImage]);
 
   // ── Galerie photo (toutes plateformes) → scan code-barres ────────────────
   const pickFromGallery = useCallback(async () => {

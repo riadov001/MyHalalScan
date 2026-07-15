@@ -5,3 +5,4 @@
 - [HalalScan Offline Seed Database](halalscan-seed-db.md) — 336-product halal seed in seed_products table; loaded via require() at bundle time; offline lookup before queue; database.tsx management screen
 - [HalalScan Ingredient Classification](halalscan-classification.md) — E471/E472a-f/E473-E479b/E422/E570/E470a-b/E1518/collagène now HARAM (not warning); user-configurable list planned for Task #5
 - [HalalScan Photo Storage](halalscan-photo-storage.md) — GCS upload via presigned URL; photoPath stored in SQLite; thumbnails in history screen
+- [HalalScan web capture button click handling](halalscan-web-capture-click.md) — file-input `.click()` fallback must not follow an `await`, or browsers silently refuse to open it
